@@ -10,6 +10,7 @@ import { SocialProfilePage } from './features/social/SocialProfilePage'
 import { SocialSidebar } from './features/social/SocialSidebar'
 import { useSocialState } from './features/social/use-social-state'
 import { useUserLocation } from './hooks/use-user-location'
+import { API_BASE_URL, apiRequest } from './services/http'
 import { getNearbyStores, searchProducts } from './services/location-shopping-api'
 import type { FeedTab } from './features/social/types'
 import type { NearbyStoreResult, ProductSuggestion } from './types/location-shopping'
@@ -22,31 +23,34 @@ type Recipe = { id: string; userId: string; storeId: string | null; title: strin
 type ProductForm = { name: string; category: string; brand: string; storeId: string; referenceAmount: string; referenceUnit: string; calories: string; protein: string; carbs: string; fat: string; price: string; stock: string; imageUrl: string }
 type StoreForm = { name: string; city: string; description: string; address: string; logo: string; accent: string; imageUrl: string }
 type RecipeForm = { title: string; description: string; steps: string; userId: string; storeId: string; difficulty: string; servings: string; prepTime: string; imageUrl: string; ingredients: Array<{ productId: string; quantity: string; unit: string }> }
-type RecipeDetail = { id: number; user_id: number; store_id: string | null; title: string; description: string | null; steps: string | null; image_url: string | null; servings: number; prep_time: number; difficulty: string; ingredients: Array<{ product_id: number; quantity: number | string; unit: string }> }
+type RecipeIngredientDetail = { product_id: number; name: string; brand: string; category: string; calories: number; protein: number | string; carbs: number | string; fat: number | string; reference_amount: number | string; reference_unit: string; quantity: number | string; unit: string }
+type RecipeDetail = { id: number; user_id: number; store_id: string | null; title: string; description: string | null; steps: string | null; image_url: string | null; servings: number; prep_time: number; difficulty: string; ingredients: RecipeIngredientDetail[] }
 type ApiBootstrap = {
   users: Array<{ id: number; name: string; handle: string }>
   stores: Array<{ id: string; name: string; description: string | null; address: string | null; city: string; logo: string; accent: string; image_url: string | null }>
   products: Array<{ id: number; name: string; category: string; brand: string; store_id: string; reference_amount: number | string; reference_unit: string; image_url: string | null; price: number | string; stock: number; calories: number; protein: number | string; carbs: number | string; fat: number | string }>
   recipes: Array<{ id: number; user_id: number; store_id: string | null; title: string; description: string | null; steps: string | null; image_url: string | null; servings: number; prep_time: number; difficulty: string; calories_total: number | string; protein_total: number | string; carbs_total: number | string; fat_total: number | string }>
 }
+type ApiHealth = {
+  ok: boolean
+  service: string
+  db: string
+  metrics?: { users: number; recipes: number; products: number }
+}
 type DeleteDialog = { type: 'product' | 'store' | 'recipe'; id: string; label: string }
-
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? 'http://localhost:4000'
+type ShoppingPlanResponse = {
+  recipes: Array<{ id: number; title: string; store_id: string | null; calories_total: number; protein_total: number; carbs_total: number; fat_total: number }>
+  items: Array<{ product_id: number; name: string; brand: string; category: string; quantity: number; unit: string; estimated_cost: number; recipes: string[]; store_id: string | null }>
+  stores: Array<{ store_id: string; store_name: string; store_city: string | null; items: number; estimated_cost: number }>
+  summary: { calories: number; protein: number; carbs: number; fat: number; estimated_cost: number }
+}
 const blankProductForm: ProductForm = { name: '', category: '', brand: '', storeId: '', referenceAmount: '100', referenceUnit: 'g', calories: '0', protein: '0', carbs: '0', fat: '0', price: '0', stock: '0', imageUrl: '' }
 const blankStoreForm: StoreForm = { name: '', city: '', description: '', address: '', logo: 'ST', accent: '#3b82f6', imageUrl: '' }
 const blankRecipeForm = (users: User[], stores: Store[]): RecipeForm => ({ title: '', description: '', steps: '', userId: users[0]?.id || '', storeId: stores[0]?.id || '', difficulty: 'Media', servings: '1', prepTime: '0', imageUrl: '', ingredients: [{ productId: '', quantity: '1', unit: 'g' }] })
-
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init)
-  const data = (await res.json().catch(() => ({}))) as T & { message?: string }
-  if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`)
-  return data
-}
-
-const fetchJson = <T,>(path: string) => requestJson<T>(path)
-const postJson = (path: string, body: unknown) => requestJson(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-const putJson = (path: string, body: unknown) => requestJson(path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-const deleteJson = (path: string) => requestJson(path, { method: 'DELETE' })
+const fetchJson = <T,>(path: string) => apiRequest<T>(path)
+const postJson = (path: string, body: unknown) => apiRequest(path, { method: 'POST', body: JSON.stringify(body) })
+const putJson = (path: string, body: unknown) => apiRequest(path, { method: 'PUT', body: JSON.stringify(body) })
+const deleteJson = (path: string) => apiRequest(path, { method: 'DELETE' })
 const n = (value: string, fallback = 0) => (Number.isFinite(Number(value)) ? Number(value) : fallback)
 function App() {
   const navigate = useNavigate()
@@ -74,6 +78,12 @@ function App() {
   const [productsCrud, setProductsCrud] = useState<Product[]>([])
   const [recipesCrud, setRecipesCrud] = useState<Recipe[]>([])
   const [crudMessage, setCrudMessage] = useState<string | null>(null)
+  const [shoppingPlanRecipeIds, setShoppingPlanRecipeIds] = useState<string[]>([])
+  const [shoppingPlanLoading, setShoppingPlanLoading] = useState(false)
+  const [shoppingPlanData, setShoppingPlanData] = useState<ShoppingPlanResponse | null>(null)
+  const [apiHealth, setApiHealth] = useState<ApiHealth | null>(null)
+  const [apiHealthLoading, setApiHealthLoading] = useState(true)
+  const [apiHealthError, setApiHealthError] = useState<string | null>(null)
   const [showProductForm, setShowProductForm] = useState(false)
   const [showStoreForm, setShowStoreForm] = useState(false)
   const [showRecipeForm, setShowRecipeForm] = useState(false)
@@ -96,6 +106,20 @@ function App() {
     getUserPosts,
   } = useSocialState()
 
+  const refreshApiHealth = useCallback(async () => {
+    setApiHealthLoading(true)
+    try {
+      const health = await fetchJson<ApiHealth>('/api/health')
+      setApiHealth(health)
+      setApiHealthError(null)
+    } catch (error) {
+      setApiHealth(null)
+      setApiHealthError(error instanceof Error ? error.message : 'No se pudo comprobar la API')
+    } finally {
+      setApiHealthLoading(false)
+    }
+  }, [])
+
   const loadCrudData = useCallback(async () => {
     const data = await fetchJson<ApiBootstrap>('/api/bootstrap')
     setUsers(data.users.map((u) => ({ id: String(u.id), name: u.name, handle: u.handle })))
@@ -105,8 +129,9 @@ function App() {
   }, [])
 
   useEffect(() => {
+    refreshApiHealth().catch(() => undefined)
     loadCrudData().catch((err) => setCrudMessage((err as Error).message))
-  }, [loadCrudData])
+  }, [loadCrudData, refreshApiHealth])
 
   useEffect(() => {
     setProductForm((p) => ({ ...p, storeId: p.storeId || storesCrud[0]?.id || '' }))
@@ -437,8 +462,18 @@ function App() {
   const profileMatch = locationRoute.pathname.match(/^\/perfil\/([^/]+)$/)
   const profileUserId = profileMatch ? decodeURIComponent(profileMatch[1]) : null
   const isProfileRoute = profileUserId !== null
+  const apiStatusTone = apiHealthError ? 'status-error' : apiHealthLoading ? 'status-loading' : 'status-granted'
+  const apiStatusLabel = apiHealthError
+    ? `API sin conexion: ${apiHealthError}`
+    : apiHealthLoading
+      ? 'Comprobando API...'
+      : `API lista en ${API_BASE_URL}`
   const feedPosts = useMemo(() => getFeedPosts(feedTab), [feedTab, getFeedPosts])
   const profileUser = profileUserId ? socialUsersById[profileUserId] ?? null : null
+  const selectedRecipes = useMemo(
+    () => shoppingPlanRecipeIds.map((id) => recipesCrud.find((recipe) => recipe.id === id)).filter((recipe): recipe is Recipe => Boolean(recipe)),
+    [recipesCrud, shoppingPlanRecipeIds],
+  )
   const profilePosts = useMemo(
     () => (profileUserId ? getUserPosts(profileUserId) : []),
     [getUserPosts, profileUserId],
@@ -454,10 +489,56 @@ function App() {
     }
   }, [activeSection, isProfileRoute])
 
+  useEffect(() => {
+    setShoppingPlanRecipeIds((current) => current.filter((id) => recipesCrud.some((recipe) => recipe.id === id)))
+  }, [recipesCrud])
+
+  useEffect(() => {
+    if (shoppingPlanRecipeIds.length === 0) {
+      setShoppingPlanData(null)
+      setShoppingPlanLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setShoppingPlanLoading(true)
+
+    postJson('/api/shopping-plan/preview', {
+      recipe_ids: shoppingPlanRecipeIds.map((recipeId) => Number(recipeId)),
+    })
+      .then((data) => {
+        if (cancelled) return
+        setShoppingPlanData(data as ShoppingPlanResponse)
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setShoppingPlanData(null)
+          setCrudMessage(error instanceof Error ? error.message : 'No se pudo preparar la lista de compra')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setShoppingPlanLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [shoppingPlanRecipeIds])
+
   const openSocialProfile = useCallback((userId: string) => {
     setActiveSection('perfil')
     navigate(`/perfil/${userId}`)
   }, [navigate])
+
+  const toggleRecipeInShoppingPlan = useCallback((recipeId: string) => {
+    setShoppingPlanRecipeIds((current) => (
+      current.includes(recipeId)
+        ? current.filter((id) => id !== recipeId)
+        : [...current, recipeId]
+    ))
+  }, [])
 
   const handleSectionSelect = useCallback((section: typeof activeSection) => {
     if (section === 'perfil') {
@@ -532,6 +613,22 @@ function App() {
             </div>
           )}
           <p className="muted">{headerDescription}</p>
+          <div className="api-status-card">
+            <div>
+              <p className="eyebrow">Estado del sistema</p>
+              <p className={`status-pill ${apiStatusTone}`}>{apiStatusLabel}</p>
+            </div>
+            <div className="api-status-actions">
+              {apiHealth?.metrics ? (
+                <p className="muted api-status-metrics">
+                  {apiHealth.metrics.users} usuarios · {apiHealth.metrics.products} productos · {apiHealth.metrics.recipes} recetas
+                </p>
+              ) : null}
+              <button type="button" className="ghost-btn" onClick={() => void refreshApiHealth()}>
+                Reintentar
+              </button>
+            </div>
+          </div>
         </header>
         {crudMessage && <section className="panel card-surface"><p className="muted">{crudMessage}</p></section>}
 
@@ -770,9 +867,81 @@ function App() {
               <p className="eyebrow">Recetas</p>
               <h2>Gestion de recetas</h2>
             </div>
-            <button type="button" className="primary-btn" onClick={() => { if (showRecipeForm) { closeRecipeForm() } else { setShowRecipeForm(true) } }}>
-              {showRecipeForm ? 'Cerrar formulario' : 'Añadir receta'}
-            </button>
+            <div className="crud-actions">
+              <button type="button" className="ghost-btn" onClick={() => setShoppingPlanRecipeIds([])} disabled={shoppingPlanRecipeIds.length === 0}>
+                Vaciar lista
+              </button>
+              <button type="button" className="primary-btn" onClick={() => { if (showRecipeForm) { closeRecipeForm() } else { setShowRecipeForm(true) } }}>
+                {showRecipeForm ? 'Cerrar formulario' : 'Añadir receta'}
+              </button>
+            </div>
+            <section className="shopping-plan-panel">
+              <div className="shopping-plan-header">
+                <div>
+                  <p className="eyebrow">Planificador</p>
+                  <h3>Lista de compra inteligente</h3>
+                </div>
+                <span className="status-pill">{selectedRecipes.length} recetas seleccionadas</span>
+              </div>
+              {shoppingPlanLoading ? <p className="muted">Preparando ingredientes y resumen...</p> : null}
+              {selectedRecipes.length === 0 ? (
+                <p className="muted">Marca recetas para agrupar ingredientes, estimar coste y ver en qué tiendas te encaja mejor comprar.</p>
+              ) : (
+                <>
+                  <div className="shopping-plan-metrics">
+                    <article className="shopping-metric-card">
+                      <strong>{shoppingPlanData?.items.length ?? 0}</strong>
+                      <span>ingredientes unificados</span>
+                    </article>
+                    <article className="shopping-metric-card">
+                      <strong>{(shoppingPlanData?.summary.estimated_cost ?? 0).toFixed(2)} EUR</strong>
+                      <span>coste estimado</span>
+                    </article>
+                    <article className="shopping-metric-card">
+                      <strong>{(shoppingPlanData?.summary.calories ?? 0).toFixed(0)} kcal</strong>
+                      <span>energia total</span>
+                    </article>
+                    <article className="shopping-metric-card">
+                      <strong>{(shoppingPlanData?.summary.protein ?? 0).toFixed(1)} g</strong>
+                      <span>proteina acumulada</span>
+                    </article>
+                  </div>
+                  <div className="shopping-plan-grid">
+                    <div className="shopping-plan-column">
+                      <h4>Ingredientes a comprar</h4>
+                      <div className="shopping-ingredient-list">
+                        {shoppingPlanData?.items.map((item) => (
+                          <article key={`${item.product_id}-${item.unit}`} className="shopping-ingredient-card">
+                            <div className="shopping-ingredient-top">
+                              <strong>{item.name}</strong>
+                              <span>{item.quantity.toFixed(2)} {item.unit}</span>
+                            </div>
+                            <p className="muted">{item.brand || item.category}</p>
+                            <p className="muted">Recetas: {item.recipes.join(', ')}</p>
+                            <p className="shopping-price">{item.estimated_cost > 0 ? `${item.estimated_cost.toFixed(2)} EUR aprox.` : 'Sin precio estimado'}</p>
+                          </article>
+                        )) ?? null}
+                      </div>
+                    </div>
+                    <div className="shopping-plan-column">
+                      <h4>Tiendas sugeridas</h4>
+                      <div className="shopping-store-list">
+                        {shoppingPlanData && shoppingPlanData.stores.length > 0 ? shoppingPlanData.stores.map((store) => (
+                          <article key={store.store_id} className="shopping-store-card">
+                            <div className="shopping-ingredient-top">
+                              <strong>{store.store_name || (storeById.get(store.store_id)?.name ?? 'Tienda')}</strong>
+                              <span>{store.items} productos</span>
+                            </div>
+                            <p className="muted">{store.store_city || (storeById.get(store.store_id)?.city ?? 'Ubicacion pendiente')}</p>
+                            <p className="shopping-price">{store.estimated_cost.toFixed(2)} EUR estimados en esta tienda</p>
+                          </article>
+                        )) : <p className="muted">No hay suficientes productos asociados a tiendas para sugerirte una compra agrupada.</p>}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </section>
             {showRecipeForm && !editingRecipeId && (
               <form className="crud-form" onSubmit={submitRecipe}>
                 <input placeholder="Titulo" value={recipeForm.title} onChange={(e) => setRecipeForm((p) => ({ ...p, title: e.target.value }))} required />
@@ -860,6 +1029,13 @@ function App() {
                     <p className="muted">{userById.get(r.userId)?.name ?? 'Sin autor'} · {storeById.get(r.storeId ?? '')?.name ?? 'Sin tienda'}</p>
                   </div>
                   <div className="crud-actions">
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => toggleRecipeInShoppingPlan(r.id)}
+                    >
+                      {shoppingPlanRecipeIds.includes(r.id) ? 'Quitar de compra' : 'Añadir a compra'}
+                    </button>
                     <button type="button" className="ghost-btn" onClick={() => void startEditRecipe(r.id)}>Editar</button>
                     <button type="button" className="danger-btn" onClick={() => void removeRecipe(r)}>Eliminar</button>
                   </div>
@@ -931,5 +1107,3 @@ function labelForSection(section: 'inicio' | 'productos' | 'tiendas' | 'recetas'
 }
 
 export default App
-
-

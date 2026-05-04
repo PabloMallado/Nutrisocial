@@ -3,13 +3,17 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "electron/main.mjs",
   "scripts": {
     "dev": "vite",
     "dev:api": "python -m uvicorn backend.api.main:app --reload --host 0.0.0.0 --port 4000",
+    "dev:desktop": "node electron/dev-runner.mjs",
     "db:up": "docker compose up -d mysql",
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f mysql",
     "build": "tsc -b && vite build",
+    "build:desktop": "npm run build && electron-builder",
+    "start:desktop": "electron .",
     "lint": "eslint .",
     "preview": "vite preview",
     "start:api": "python -m uvicorn backend.api.main:app --host 0.0.0.0 --port 4000"
@@ -29,6 +33,8 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
@@ -36,5 +42,23 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.0",
     "vite": "^8.0.4"
+  },
+  "build": {
+    "appId": "com.nutrisocial.desktop",
+    "productName": "NutriSocial",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "backend/**/*",
+      "package.json",
+      ".env.example",
+      "requirements.txt"
+    ],
+    "directories": {
+      "buildResources": "electron/assets"
+    },
+    "win": {
+      "target": "nsis"
+    }
   }
 }

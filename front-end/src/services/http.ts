@@ -1,4 +1,4 @@
-﻿const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000'
+export const API_BASE_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:4000').replace(/\/$/, '')
 
 export class ApiError extends Error {
   status: number
@@ -30,6 +30,9 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
     throw new ApiError(message, response.status)
   }
 
+  if (response.status === 204) {
+    return undefined as T
+  }
+
   return (await response.json()) as T
 }
-

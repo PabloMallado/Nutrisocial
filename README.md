@@ -46,6 +46,8 @@ DB_USER=root
 DB_PASSWORD=tu_password
 DB_NAME=nutrisocial
 API_PORT=4000
+VITE_API_URL=http://localhost:4000
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
 
 3. Instala dependencias de Node si no las tienes:
@@ -90,15 +92,38 @@ npm run dev
 
 Vite servira la aplicacion React desde `front-end/`.
 
+La interfaz mostrara una tarjeta de estado de API al arrancar para confirmar si el backend y la base de datos estan accesibles.
+
 ## Scripts utiles
 
 - `npm run dev`: arranca el front-end.
 - `npm run dev:api`: arranca la API.
+- `npm run dev:desktop`: arranca API, frontend y Electron para modo escritorio.
 - `npm run db:up`: arranca MySQL con Docker.
 - `npm run db:down`: para los contenedores.
 - `npm run db:logs`: muestra logs de MySQL.
 - `npm run build`: compila TypeScript y genera build de Vite.
+- `npm run build:desktop`: genera la build web y empaqueta la app de Electron.
+- `npm run start:desktop`: abre Electron usando la build ya generada en `dist/`.
 - `npm run lint`: ejecuta ESLint.
+
+## Modo escritorio con Electron
+
+La integracion de Electron vive en `electron/` y usa:
+
+- `electron/main.mjs`: ventana principal y carga de la app.
+- `electron/preload.mjs`: bridge seguro al renderer.
+- `electron/dev-runner.mjs`: lanzador de desarrollo.
+
+En desarrollo, `npm run dev:desktop`:
+
+1. Comprueba si la API en `http://127.0.0.1:4000` ya esta viva.
+2. Si no, la arranca con `uvicorn`.
+3. Comprueba si Vite en `http://127.0.0.1:5173` ya esta vivo.
+4. Si no, arranca el frontend.
+5. Abre la app en Electron.
+
+En Electron, el frontend usa `HashRouter` para que la navegacion funcione bien desde la build local empaquetada.
 
 ## Endpoints actuales
 

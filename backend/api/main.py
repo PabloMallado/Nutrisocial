@@ -16,10 +16,16 @@ load_dotenv()
 app = FastAPI(title="NutriSocial API")
 allowed_difficulties = {"Facil", "Media", "Alta"}
 
+
+def parse_allowed_origins() -> list[str]:
+    raw_value = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+    origins = [item.strip() for item in raw_value.split(",") if item.strip()]
+    return origins or ["http://localhost:5173", "http://127.0.0.1:5173"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=parse_allowed_origins(),
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -30,6 +36,11 @@ def http_exception_handler(_request: Request, exc: HTTPException) -> JSONRespons
     if isinstance(exc.detail, dict):
         return JSONResponse(status_code=exc.status_code, content=exc.detail)
     return JSONResponse(status_code=exc.status_code, content={"message": str(exc.detail)})
+
+
+@app.exception_handler(Exception)
+def unhandled_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(status_code=500, content={"message": "Error interno del servidor", "error": safe_error(exc)})
 
 
 def safe_error(error: Exception) -> str:
@@ -65,6 +76,21 @@ def parse_nullable_coordinate(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def validate_coordinate_range(lat: float | None, lng: float | None) -> None:
+    if lat is not None and not -90 <= lat <= 90:
+        raise HTTPException(status_code=400, detail={"message": "latitude fuera de rango"})
+    if lng is not None and not -180 <= lng <= 180:
+        raise HTTPException(status_code=400, detail={"message": "longitude fuera de rango"})
+
+
+def ensure_record_exists(table: str, field: str, value: Any, message: str) -> None:
+    if value in (None, ""):
+        return
+    row = query_one(f"SELECT {field} FROM {table} WHERE {field} = %s LIMIT 1", (value,))
+    if not row:
+        raise HTTPException(status_code=400, detail={"message": message})
 
 
 def query_all(sql: str, params: tuple = ()) -> list[dict]:
@@ -169,6 +195,7 @@ def health() -> dict:
         products_count = query_one("SELECT COUNT(*) AS total FROM products")["total"]
         return {
             "ok": True,
+            "service": app.title,
             "db": "connected",
             "metrics": {
                 "users": users_count,
@@ -217,10 +244,7 @@ def create_store(payload: dict, default_logo: str, error_label: str) -> dict:
 
     lat = parse_nullable_coordinate(payload.get("latitude"))
     lng = parse_nullable_coordinate(payload.get("longitude"))
-    if lat is not None and not -90 <= lat <= 90:
-        raise HTTPException(status_code=400, detail={"message": "latitude fuera de rango"})
-    if lng is not None and not -180 <= lng <= 180:
-        raise HTTPException(status_code=400, detail={"message": "longitude fuera de rango"})
+    validate_coordinate_range(lat, lng)
 
     try:
         candidate_id = base_id
@@ -275,10 +299,7 @@ def put_store(store_id: str, payload: dict | None = Body(default=None)) -> dict:
 
     lat = parse_nullable_coordinate(payload.get("latitude"))
     lng = parse_nullable_coordinate(payload.get("longitude"))
-    if lat is not None and not -90 <= lat <= 90:
-        raise HTTPException(status_code=400, detail={"message": "latitude fuera de rango"})
-    if lng is not None and not -180 <= lng <= 180:
-        raise HTTPException(status_code=400, detail={"message": "longitude fuera de rango"})
+    validate_coordinate_range(lat, lng)
 
     row_count = execute(
         """
@@ -333,6 +354,12 @@ def post_user(payload: dict | None = Body(default=None)) -> dict:
     payload = payload or {}
     if not payload.get("name") or not payload.get("handle") or not payload.get("email"):
         raise HTTPException(status_code=400, detail={"message": "name, handle y email son obligatorios"})
+    if "@" not in str(payload.get("email")):
+        raise HTTPException(status_code=400, detail={"message": "email invalido"})
+    if query_one("SELECT id FROM users WHERE handle = %s LIMIT 1", (payload.get("handle"),)):
+        raise HTTPException(status_code=409, detail={"message": "El handle ya existe"})
+    if query_one("SELECT id FROM users WHERE email = %s LIMIT 1", (payload.get("email"),)):
+        raise HTTPException(status_code=409, detail={"message": "El email ya existe"})
     new_id = execute(
         "INSERT INTO users (name, handle, email, city, bio, avatar_url, verified) VALUES (%s, %s, %s, %s, %s, %s, %s)",
         (
@@ -382,8 +409,11 @@ def search_products(q: str = "", limit: int = Query(default=20, ge=1, le=50)) ->
 def nearby_stores(product_id: int, lat: float, lng: float, radiusKm: float = 25) -> dict:
     if product_id <= 0:
         raise HTTPException(status_code=400, detail={"message": "id de producto invalido"})
+    validate_coordinate_range(lat, lng)
+    if radiusKm <= 0 or radiusKm > 100:
+        raise HTTPException(status_code=400, detail={"message": "radiusKm debe estar entre 0 y 100"})
 
-    normalized_radius = radiusKm if radiusKm > 0 else 25
+    normalized_radius = radiusKm
     product = query_one(
         """
         SELECT id, name, brand, category, reference_amount, reference_unit
@@ -491,6 +521,7 @@ def validate_product(payload: dict) -> None:
         raise HTTPException(status_code=400, detail={"message": "name, category, brand y store_id son obligatorios"})
     if number_or(payload.get("reference_amount"), 0) <= 0:
         raise HTTPException(status_code=400, detail={"message": "reference_amount debe ser mayor que 0"})
+    ensure_record_exists("stores", "id", payload.get("store_id"), "La tienda indicada no existe")
 
 
 @app.post("/api/products", status_code=201)
@@ -599,6 +630,171 @@ def get_recipe(recipe_id: int) -> dict:
     return recipe
 
 
+def build_shopping_plan(recipe_ids: list[int]) -> dict:
+    if len(recipe_ids) == 0:
+        return {
+            "recipes": [],
+            "items": [],
+            "stores": [],
+            "summary": {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0, "estimated_cost": 0.0},
+        }
+
+    placeholders = ", ".join(["%s"] * len(recipe_ids))
+    recipe_rows = query_all(
+        f"""
+        SELECT id, title, store_id, calories_total, protein_total, carbs_total, fat_total
+        FROM recipes
+        WHERE id IN ({placeholders})
+        ORDER BY created_at DESC
+        """,
+        tuple(recipe_ids),
+    )
+    found_ids = {int(row["id"]) for row in recipe_rows}
+    missing_ids = [recipe_id for recipe_id in recipe_ids if recipe_id not in found_ids]
+    if missing_ids:
+        raise HTTPException(status_code=404, detail={"message": f"Recetas no encontradas: {', '.join(str(item) for item in missing_ids)}"})
+
+    ingredient_rows = query_all(
+        f"""
+        SELECT
+          r.id AS recipe_id,
+          r.title AS recipe_title,
+          p.id AS product_id,
+          p.name,
+          p.brand,
+          p.category,
+          p.store_id,
+          p.price,
+          p.reference_amount,
+          p.reference_unit,
+          ri.quantity,
+          ri.unit,
+          s.name AS store_name,
+          s.city AS store_city
+        FROM recipe_ingredients ri
+        INNER JOIN recipes r ON r.id = ri.recipe_id
+        INNER JOIN products p ON p.id = ri.product_id
+        LEFT JOIN stores s ON s.id = p.store_id
+        WHERE ri.recipe_id IN ({placeholders})
+        ORDER BY p.category ASC, p.name ASC
+        """,
+        tuple(recipe_ids),
+    )
+
+    grouped_items: dict[tuple[int, str], dict] = {}
+    grouped_stores: dict[str, dict] = {}
+    estimated_cost_total = 0.0
+
+    for row in ingredient_rows:
+        product_id = int(row["product_id"])
+        unit = row["unit"] or row["reference_unit"] or "g"
+        key = (product_id, unit)
+        quantity = max(0.0, number_or(row["quantity"], 0))
+        reference_amount = max(0.0001, number_or(row["reference_amount"], 100))
+        estimated_cost = max(0.0, number_or(row["price"], 0)) * (quantity / reference_amount)
+        estimated_cost_total += estimated_cost
+
+        if key not in grouped_items:
+            grouped_items[key] = {
+                "product_id": product_id,
+                "name": row["name"],
+                "brand": row["brand"],
+                "category": row["category"],
+                "quantity": 0.0,
+                "unit": unit,
+                "estimated_cost": 0.0,
+                "recipes": [],
+                "store_id": row["store_id"],
+            }
+
+        grouped_items[key]["quantity"] += quantity
+        grouped_items[key]["estimated_cost"] += estimated_cost
+        if row["recipe_title"] not in grouped_items[key]["recipes"]:
+            grouped_items[key]["recipes"].append(row["recipe_title"])
+
+        store_id = row["store_id"]
+        if store_id:
+            if store_id not in grouped_stores:
+                grouped_stores[store_id] = {
+                    "store_id": store_id,
+                    "store_name": row["store_name"],
+                    "store_city": row["store_city"],
+                    "items": 0,
+                    "estimated_cost": 0.0,
+                }
+            grouped_stores[store_id]["items"] += 1
+            grouped_stores[store_id]["estimated_cost"] += estimated_cost
+
+    summary = {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0, "estimated_cost": round(estimated_cost_total, 2)}
+    for recipe in recipe_rows:
+        summary["calories"] += number_or(recipe["calories_total"], 0)
+        summary["protein"] += number_or(recipe["protein_total"], 0)
+        summary["carbs"] += number_or(recipe["carbs_total"], 0)
+        summary["fat"] += number_or(recipe["fat_total"], 0)
+
+    items = sorted(grouped_items.values(), key=lambda item: (str(item["category"]), str(item["name"])))
+    stores = sorted(grouped_stores.values(), key=lambda store: (-int(store["items"]), float(store["estimated_cost"])))
+    recipes = [
+        {
+            "id": int(recipe["id"]),
+            "title": recipe["title"],
+            "store_id": recipe["store_id"],
+            "calories_total": number_or(recipe["calories_total"], 0),
+            "protein_total": number_or(recipe["protein_total"], 0),
+            "carbs_total": number_or(recipe["carbs_total"], 0),
+            "fat_total": number_or(recipe["fat_total"], 0),
+        }
+        for recipe in recipe_rows
+    ]
+
+    return {
+        "recipes": recipes,
+        "items": [
+            {
+                **item,
+                "quantity": round(number_or(item["quantity"], 0), 2),
+                "estimated_cost": round(number_or(item["estimated_cost"], 0), 2),
+            }
+            for item in items
+        ],
+        "stores": [
+            {
+                **store,
+                "estimated_cost": round(number_or(store["estimated_cost"], 0), 2),
+            }
+            for store in stores
+        ],
+        "summary": {
+            "calories": round(summary["calories"], 2),
+            "protein": round(summary["protein"], 2),
+            "carbs": round(summary["carbs"], 2),
+            "fat": round(summary["fat"], 2),
+            "estimated_cost": round(summary["estimated_cost"], 2),
+        },
+    }
+
+
+@app.post("/api/shopping-plan/preview")
+def preview_shopping_plan(payload: dict | None = Body(default=None)) -> dict:
+    payload = payload or {}
+    recipe_ids = payload.get("recipe_ids")
+    if not isinstance(recipe_ids, list):
+        raise HTTPException(status_code=400, detail={"message": "recipe_ids debe ser una lista"})
+
+    normalized_ids: list[int] = []
+    seen: set[int] = set()
+    for value in recipe_ids:
+        recipe_id = int_or(value, 0)
+        if recipe_id <= 0:
+            raise HTTPException(status_code=400, detail={"message": "Todos los recipe_ids deben ser validos"})
+        if recipe_id in seen:
+            continue
+        seen.add(recipe_id)
+        normalized_ids.append(recipe_id)
+
+    return build_shopping_plan(normalized_ids)
+
+
 def resolve_ingredients_with_totals(cursor, ingredients: list[dict]) -> tuple[list[dict], float, float, float, float]:
     ingredient_rows = []
     calories_total = protein_total = carbs_total = fat_total = 0.0
@@ -636,6 +832,8 @@ def validate_recipe_payload(payload: dict) -> None:
         raise HTTPException(status_code=400, detail={"message": "ingredients debe tener al menos un elemento"})
     if payload.get("difficulty", "Media") not in allowed_difficulties:
         raise HTTPException(status_code=400, detail={"message": "difficulty debe ser 'Facil', 'Media' o 'Alta'"})
+    ensure_record_exists("users", "id", payload.get("user_id"), "El usuario indicado no existe")
+    ensure_record_exists("stores", "id", payload.get("store_id"), "La tienda indicada no existe")
 
 
 @app.post("/api/recipes", status_code=201)
