@@ -5,6 +5,7 @@ import './App.css'
 import { LocationPanel } from './components/LocationPanel'
 import { ProductSearchPanel } from './components/ProductSearchPanel'
 import { StoreResultsPanel } from './components/StoreResultsPanel'
+import { SocialAccountPage } from './features/social/SocialAccountPage'
 import { SocialHome } from './features/social/SocialHome'
 import { SocialProfilePage } from './features/social/SocialProfilePage'
 import { SocialSidebar } from './features/social/SocialSidebar'
@@ -12,7 +13,7 @@ import { useSocialState } from './features/social/use-social-state'
 import { useUserLocation } from './hooks/use-user-location'
 import { API_BASE_URL, apiRequest } from './services/http'
 import { getNearbyStores, searchProducts } from './services/location-shopping-api'
-import type { FeedTab } from './features/social/types'
+import type { AccountSection, FeedTab } from './features/social/types'
 import type { NearbyStoreResult, ProductSuggestion } from './types/location-shopping'
 
 
@@ -70,8 +71,9 @@ function App() {
   const [hasSearched, setHasSearched] = useState(false)
   const [prioritizeAvailable, setPrioritizeAvailable] = useState(false)
   const [activeSection, setActiveSection] = useState<
-    'inicio' | 'productos' | 'tiendas' | 'recetas' | 'perfil' | 'tiendas-cercanas'
+    'inicio' | 'productos' | 'tiendas' | 'recetas' | 'perfil' | 'cuenta' | 'tiendas-cercanas'
   >('inicio')
+  const [accountSection, setAccountSection] = useState<AccountSection>('overview')
   const [feedTab, setFeedTab] = useState<FeedTab>('para-ti')
   const [users, setUsers] = useState<User[]>([])
   const [storesCrud, setStoresCrud] = useState<Store[]>([])
@@ -97,11 +99,13 @@ function App() {
   const {
     currentUser: socialCurrentUser,
     usersById: socialUsersById,
+    commentsByPostId,
     followingUsers,
     followingSet,
     requestSet,
     followUser,
     sendFriendRequest,
+    addComment,
     getFeedPosts,
     getUserPosts,
   } = useSocialState()
@@ -478,6 +482,10 @@ function App() {
     () => (profileUserId ? getUserPosts(profileUserId) : []),
     [getUserPosts, profileUserId],
   )
+  const savedPosts = useMemo(() => {
+    const allFeedPosts = getFeedPosts('para-ti')
+    return allFeedPosts.filter((post) => ['post-lucia-1', 'post-andrea-1', 'post-marcos-1'].includes(post.id))
+  }, [getFeedPosts])
 
   useEffect(() => {
     if (isProfileRoute && activeSection !== 'perfil') {
@@ -547,11 +555,28 @@ function App() {
       return
     }
 
+    if (section === 'cuenta') {
+      setActiveSection('cuenta')
+      setAccountSection('overview')
+      if (locationRoute.pathname !== '/') {
+        navigate('/')
+      }
+      return
+    }
+
     setActiveSection(section)
     if (locationRoute.pathname !== '/') {
       navigate('/')
     }
   }, [locationRoute.pathname, navigate, socialCurrentUser.id])
+
+  const openAccountSection = useCallback((section: AccountSection) => {
+    setActiveSection('cuenta')
+    setAccountSection(section)
+    if (locationRoute.pathname !== '/') {
+      navigate('/')
+    }
+  }, [locationRoute.pathname, navigate])
 
   const headerDescription = isProfileRoute
     ? 'Perfil de usuario en vista independiente'
@@ -561,6 +586,8 @@ function App() {
           : 'Publicaciones solo de perfiles que sigues en estado local')
       : activeSection === 'tiendas-cercanas'
         ? 'Flujo de compra por proximidad en tiempo real'
+        : activeSection === 'cuenta'
+          ? 'Zona personal para gestionar tu perfil y preferencias'
         : `${labelForSection(activeSection)} en la estructura principal`
 
   return (
@@ -578,6 +605,7 @@ function App() {
             { id: 'tiendas', label: 'Tiendas' },
             { id: 'recetas', label: 'Recetas' },
             { id: 'perfil', label: 'Perfil' },
+            { id: 'cuenta', label: 'Mi cuenta' },
             { id: 'tiendas-cercanas', label: 'Tiendas cercanas' },
           ].map((item) => (
             <button
@@ -637,10 +665,15 @@ function App() {
             <SocialProfilePage
               user={profileUser}
               posts={profilePosts}
+              commentsByPostId={commentsByPostId}
+              currentUser={socialCurrentUser}
+              usersById={socialUsersById}
               isFollowing={followingSet.has(profileUser.id)}
               hasRequest={requestSet.has(profileUser.id)}
+              onOpenProfile={openSocialProfile}
               onFollowUser={followUser}
               onSendFriendRequest={sendFriendRequest}
+              onAddComment={addComment}
             />
           ) : (
             <section className="panel card-surface">
@@ -655,8 +688,22 @@ function App() {
           <SocialHome
             feedTab={feedTab}
             posts={feedPosts}
+            commentsByPostId={commentsByPostId}
+            currentUser={socialCurrentUser}
             usersById={socialUsersById}
             onOpenProfile={openSocialProfile}
+            onAddComment={addComment}
+          />
+        ) : activeSection === 'cuenta' ? (
+          <SocialAccountPage
+            currentUser={socialCurrentUser}
+            accountSection={accountSection}
+            savedPosts={savedPosts}
+            commentsByPostId={commentsByPostId}
+            usersById={socialUsersById}
+            onOpenProfile={openSocialProfile}
+            onAddComment={addComment}
+            onSelectAccountSection={openAccountSection}
           />
         ) : activeSection === 'tiendas-cercanas' ? (
           <>
@@ -1060,10 +1107,9 @@ function App() {
           usersById={socialUsersById}
           followingUsers={followingUsers}
           followingSet={followingSet}
-          requestSet={requestSet}
           onOpenProfile={openSocialProfile}
+          onOpenAccountSection={openAccountSection}
           onFollowUser={followUser}
-          onSendFriendRequest={sendFriendRequest}
         />
       </aside>
 
@@ -1089,7 +1135,7 @@ function App() {
   )
 }
 
-function labelForSection(section: 'inicio' | 'productos' | 'tiendas' | 'recetas' | 'perfil' | 'tiendas-cercanas'): string {
+function labelForSection(section: 'inicio' | 'productos' | 'tiendas' | 'recetas' | 'perfil' | 'cuenta' | 'tiendas-cercanas'): string {
   switch (section) {
     case 'inicio':
       return 'Inicio'
@@ -1101,6 +1147,8 @@ function labelForSection(section: 'inicio' | 'productos' | 'tiendas' | 'recetas'
       return 'Recetas'
     case 'perfil':
       return 'Perfil'
+    case 'cuenta':
+      return 'Mi cuenta'
     default:
       return 'Tiendas cercanas'
   }

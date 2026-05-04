@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useReducer } from 'react'
-import { CURRENT_USER_ID, mockCurrentUser, mockPosts, mockUsers } from './mock-data'
-import type { FeedTab, SocialPost, SocialState, SocialUser } from './types'
+import { CURRENT_USER_ID, mockComments, mockCurrentUser, mockPosts, mockUsers } from './mock-data'
+import type { FeedTab, SocialComment, SocialPost, SocialState, SocialUser } from './types'
 
 type Action =
   | { type: 'follow_user'; userId: string }
   | { type: 'send_friend_request'; userId: string }
+  | { type: 'add_comment'; postId: string; message: string }
 
 function sortPostIdsByRecent(posts: SocialPost[]): string[] {
   return [...posts]
@@ -23,10 +24,16 @@ function buildInitialState(): SocialState {
     return acc
   }, {})
 
+  const commentsByPostId = mockComments.reduce<Record<string, SocialComment[]>>((acc, comment) => {
+    acc[comment.postId] = [...(acc[comment.postId] ?? []), comment]
+    return acc
+  }, {})
+
   return {
     currentUserId: CURRENT_USER_ID,
     usersById,
     postsById,
+    commentsByPostId,
     postIds: sortPostIdsByRecent(mockPosts),
     followingIds: [],
     sentFriendRequestIds: [],
@@ -95,6 +102,37 @@ function socialReducer(state: SocialState, action: Action): SocialState {
         },
       }
     }
+    case 'add_comment': {
+      const post = state.postsById[action.postId]
+      const trimmedMessage = action.message.trim()
+
+      if (!post || trimmedMessage.length === 0) {
+        return state
+      }
+
+      const nextComment: SocialComment = {
+        id: `comment-${action.postId}-${Date.now()}`,
+        postId: action.postId,
+        authorId: state.currentUserId,
+        message: trimmedMessage,
+        createdAt: new Date().toISOString(),
+      }
+
+      return {
+        ...state,
+        commentsByPostId: {
+          ...state.commentsByPostId,
+          [action.postId]: [...(state.commentsByPostId[action.postId] ?? []), nextComment],
+        },
+        postsById: {
+          ...state.postsById,
+          [action.postId]: {
+            ...post,
+            interactionsCount: post.interactionsCount + 1,
+          },
+        },
+      }
+    }
     default:
       return state
   }
@@ -121,12 +159,18 @@ export function useSocialState() {
     [state.followingIds, state.usersById],
   )
 
+  const commentsByPostId = useMemo(() => state.commentsByPostId, [state.commentsByPostId])
+
   const followUser = useCallback((userId: string) => {
     dispatch({ type: 'follow_user', userId })
   }, [])
 
   const sendFriendRequest = useCallback((userId: string) => {
     dispatch({ type: 'send_friend_request', userId })
+  }, [])
+
+  const addComment = useCallback((postId: string, message: string) => {
+    dispatch({ type: 'add_comment', postId, message })
   }, [])
 
   const getFeedPosts = useCallback(
@@ -143,12 +187,14 @@ export function useSocialState() {
     currentUser: state.usersById[state.currentUserId],
     usersById: state.usersById,
     allPosts,
+    commentsByPostId,
     followingPosts,
     followingUsers,
     followingSet,
     requestSet,
     followUser,
     sendFriendRequest,
+    addComment,
     getFeedPosts,
     getUserPosts,
   }

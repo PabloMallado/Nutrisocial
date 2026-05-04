@@ -1,23 +1,34 @@
+import { PostCard } from './components/PostCard'
 import { FollowButton } from './components/FollowButton'
 import { FriendRequestButton } from './components/FriendRequestButton'
-import type { SocialPost, SocialUser } from './types'
+import type { SocialComment, SocialPost, SocialUser } from './types'
 
 type SocialProfilePageProps = {
   user: SocialUser
   posts: SocialPost[]
+  commentsByPostId: Record<string, SocialComment[]>
+  currentUser: SocialUser
+  usersById: Record<string, SocialUser>
   isFollowing: boolean
   hasRequest: boolean
+  onOpenProfile: (userId: string) => void
   onFollowUser: (userId: string) => void
   onSendFriendRequest: (userId: string) => void
+  onAddComment: (postId: string, message: string) => void
 }
 
 export function SocialProfilePage({
   user,
   posts,
+  commentsByPostId,
+  currentUser,
+  usersById,
   isFollowing,
   hasRequest,
+  onOpenProfile,
   onFollowUser,
   onSendFriendRequest,
+  onAddComment,
 }: SocialProfilePageProps) {
   return (
     <section className="social-profile-page">
@@ -53,12 +64,18 @@ export function SocialProfilePage({
 
       <section className="social-profile-page-posts">
         <h3>Publicaciones</h3>
-        <div className="social-profile-posts-grid">
+        <div className="social-feed-stack">
           {posts.map((post) => (
-            <article key={post.id} className="social-profile-post-card">
-              <img src={post.imageUrl} alt={post.caption} loading="lazy" />
-              <p>{post.caption}</p>
-            </article>
+            <PostCard
+              key={post.id}
+              post={post}
+              author={user}
+              comments={commentsByPostId[post.id] ?? []}
+              currentUser={currentUser}
+              usersById={usersById}
+              onOpenProfile={onOpenProfile}
+              onAddComment={onAddComment}
+            />
           ))}
         </div>
       </section>

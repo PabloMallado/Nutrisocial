@@ -5,6 +5,9 @@
 }
 
 .social-intro-card,
+.social-account-card,
+.social-account-page,
+.social-account-panel,
 .social-post-card,
 .social-following-card,
 .social-discover-card,
@@ -17,30 +20,88 @@
 }
 
 .social-intro-card {
-  padding: 0.85rem;
-  background: linear-gradient(160deg, #ffffff, #f2f9ff);
+  padding: 0.95rem;
+  background:
+    radial-gradient(circle at top right, rgba(255, 208, 122, 0.25), transparent 32%),
+    linear-gradient(160deg, #ffffff, #f2f9ff);
 }
 
-.social-intro-card h2 {
-  margin: 0.15rem 0;
+.social-intro-card h2,
+.social-following-card h3,
+.social-discover-card h3,
+.social-empty-card h3,
+.social-profile-page-posts h3 {
+  margin: 0;
   font-family: 'Fraunces', Georgia, serif;
   color: #163647;
 }
 
-.social-intro-card p {
-  margin: 0;
+.social-intro-card p,
+.social-following-card p,
+.social-discover-card p,
+.social-empty-card p {
+  margin: 0.2rem 0 0;
   color: #537184;
 }
 
 .social-feed-stack {
   display: grid;
-  gap: 0.75rem;
+  gap: 0;
+  border: 1px solid #d2e1ea;
+  border-radius: 1rem;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(251, 253, 255, 0.98)),
+    #ffffff;
+  box-shadow: 0 14px 26px rgba(13, 41, 58, 0.08);
+}
+
+.social-feed-header {
+  padding: 0.95rem;
+  background:
+    radial-gradient(circle at top right, rgba(255, 208, 122, 0.25), transparent 32%),
+    linear-gradient(160deg, #ffffff, #f2f9ff);
+}
+
+.social-feed-header h2 {
+  margin: 0;
+  font-family: 'Fraunces', Georgia, serif;
+  color: #163647;
+}
+
+.social-feed-header p {
+  margin: 0.2rem 0 0;
+  color: #537184;
+}
+
+.social-feed-header + .social-post-card,
+.social-post-card + .social-post-card,
+.social-feed-header + .social-empty-card {
+  border-top: 1px solid #dbe7ee;
 }
 
 .social-post-card {
-  padding: 0.7rem;
+  padding: 0.95rem;
   display: grid;
-  gap: 0.55rem;
+  gap: 0.8rem;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.social-post-card.is-expanded {
+  background:
+    linear-gradient(180deg, rgba(255, 248, 232, 0.42), rgba(255, 255, 255, 0));
+}
+
+.social-post-topline,
+.social-comments-head,
+.social-recipe-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .social-author-row {
@@ -74,8 +135,35 @@
   height: 92px;
 }
 
+.social-expand-btn,
+.social-post-actions button,
+.social-action-btn,
+.social-comment-form-actions button {
+  border: 1px solid #c7dbe7;
+  border-radius: 0.72rem;
+  background: #f3fbff;
+  color: #1e4f64;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
+.social-expand-btn,
+.social-comment-form-actions button {
+  padding: 0.48rem 0.72rem;
+}
+
+.social-expand-btn:hover,
+.social-post-actions button:hover,
+.social-action-btn:hover,
+.social-comment-form-actions button:hover {
+  transform: translateY(-1px);
+  background: #e8f6fd;
+  border-color: #a9ccde;
+}
+
 .social-post-media-wrap {
-  border-radius: 0.9rem;
+  border-radius: 0.95rem;
   overflow: hidden;
   border: 1px solid #d8e6ef;
   background: #edf6fc;
@@ -88,13 +176,39 @@
   display: block;
 }
 
-.social-post-body p {
+.social-post-body {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.social-post-copy {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.social-post-copy h3 {
+  margin: 0.1rem 0 0.25rem;
+  font-family: 'Fraunces', Georgia, serif;
+  color: #173647;
+}
+
+.social-post-copy p:last-child,
+.social-recipe-description,
+.social-comment-card p {
   margin: 0;
   color: #1f3947;
 }
 
+.social-post-kicker {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0f7a72;
+}
+
 .social-post-meta {
-  margin-top: 0.35rem;
   display: flex;
   align-items: center;
   gap: 0.65rem;
@@ -103,23 +217,273 @@
   color: #5b7889;
 }
 
+.social-post-meta span {
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  background: #f2f8fc;
+  border: 1px solid #ddebf2;
+}
+
 .social-post-actions {
   display: flex;
   gap: 0.42rem;
-}
-
-.social-post-actions button,
-.social-action-btn {
-  border: 1px solid #c7dbe7;
-  border-radius: 0.72rem;
-  background: #f3fbff;
-  color: #1e4f64;
-  font-weight: 600;
-  cursor: pointer;
+  flex-wrap: wrap;
 }
 
 .social-post-actions button {
   padding: 0.42rem 0.56rem;
+}
+
+.social-post-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.95rem;
+}
+
+.social-recipe-panel,
+.social-comments-panel {
+  border-radius: 1.2rem;
+  border: 1px solid #d7e6ef;
+  padding: 1rem;
+}
+
+.social-recipe-panel {
+  background:
+    radial-gradient(circle at top left, rgba(15, 139, 132, 0.08), transparent 16rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 252, 252, 0.98)),
+    #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.social-comments-panel {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 255, 0.98)),
+    #fcfeff;
+}
+
+.social-recipe-head h4,
+.social-comments-head h4 {
+  margin: 0.18rem 0 0;
+  font-family: 'Fraunces', Georgia, serif;
+  color: #173647;
+  font-size: 1.6rem;
+}
+
+.social-recipe-subtitle,
+.social-comments-subtitle {
+  margin: 0.5rem 0 0;
+  max-width: 62ch;
+  color: #496779;
+  line-height: 1.55;
+}
+
+.social-recipe-pill,
+.social-comments-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.35rem;
+  padding: 0.32rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.social-recipe-pill {
+  background: #e5f6ef;
+  color: #0d6647;
+}
+
+.social-comments-count {
+  background: #edf6fb;
+  color: #1d5973;
+}
+
+.social-recipe-stats {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.social-recipe-stats article,
+.social-counters div {
+  border: 1px solid #d2e1ea;
+  border-radius: 1rem;
+  padding: 0.7rem 0.75rem;
+  display: grid;
+  gap: 0.24rem;
+  background: linear-gradient(180deg, #ffffff, #f7fbfe);
+}
+
+.social-recipe-stats strong,
+.social-counters strong {
+  font-size: 1.12rem;
+  color: #17384a;
+}
+
+.social-recipe-stats span,
+.social-counters span {
+  font-size: 0.8rem;
+  color: #577384;
+  text-transform: lowercase;
+}
+
+.social-recipe-grid {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.social-recipe-block {
+  border: 1px solid #dbe8ef;
+  border-radius: 1rem;
+  padding: 0.95rem;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 12px 20px rgba(17, 54, 73, 0.05);
+}
+
+.social-recipe-block h5 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  color: #1b4357;
+}
+
+.social-recipe-list,
+.social-recipe-steps,
+.social-following-list,
+.social-discover-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.social-recipe-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.social-recipe-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px dashed #dce8ef;
+  color: #26485a;
+}
+
+.social-recipe-list strong {
+  color: #133d52;
+}
+
+.social-recipe-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.social-recipe-steps {
+  counter-reset: recipe-step;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.social-recipe-steps li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.55rem;
+  color: #26485a;
+  line-height: 1.45;
+}
+
+.social-recipe-steps li::before {
+  counter-increment: recipe-step;
+  content: counter(recipe-step);
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 0.65rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #0f8b84, #0d726c);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  box-shadow: 0 8px 16px rgba(15, 139, 132, 0.22);
+}
+
+.social-comment-form {
+  margin-top: 0.85rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.65rem;
+  padding: 0.9rem;
+  border: 1px solid #d9e8f0;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.social-comment-form-body {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.social-comment-form textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 92px;
+  border-radius: 1rem;
+  border: 1px solid #cfe0ea;
+  padding: 0.75rem;
+  font: inherit;
+  color: #1f3947;
+  background: linear-gradient(180deg, #ffffff, #fbfdff);
+}
+
+.social-comment-form textarea:focus {
+  outline: none;
+  border-color: #82b9d4;
+  box-shadow: 0 0 0 3px rgba(130, 185, 212, 0.2);
+}
+
+.social-comment-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.social-comment-form-actions span {
+  font-size: 0.8rem;
+  color: #5b7889;
+}
+
+.social-comment-list {
+  margin-top: 0.95rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.social-comment-card {
+  border: 1px solid #d9e7ef;
+  border-radius: 1rem;
+  padding: 0.85rem;
+  background: linear-gradient(180deg, #ffffff, #fbfdff);
+  display: grid;
+  gap: 0.55rem;
+  box-shadow: 0 10px 18px rgba(13, 41, 58, 0.05);
+}
+
+.social-comment-card.is-empty {
+  background: #f8fcff;
+}
+
+.social-comment-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .social-counters {
@@ -128,31 +492,326 @@
   gap: 0.5rem;
 }
 
-.social-counters div {
-  border: 1px solid #d2e1ea;
-  border-radius: 0.85rem;
-  padding: 0.55rem;
-  display: grid;
-  gap: 0.18rem;
-  background: #fff;
-}
-
-.social-counters strong {
-  font-size: 1.03rem;
-  color: #17384a;
-}
-
-.social-counters span {
-  font-size: 0.8rem;
-  color: #577384;
-}
-
 .social-profile-actions,
 .social-user-card-actions {
   display: flex;
   align-items: center;
   gap: 0.45rem;
   flex-wrap: wrap;
+}
+
+.social-account-card {
+  position: relative;
+  border-radius: 1rem;
+}
+
+.social-account-trigger {
+  width: 100%;
+  border: 1px solid #d7e6ef;
+  border-radius: 1rem;
+  padding: 0.55rem 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  background:
+    radial-gradient(circle at top right, rgba(15, 139, 132, 0.12), transparent 8rem),
+    linear-gradient(180deg, #ffffff, #f7fcff);
+  box-shadow: 0 12px 20px rgba(13, 41, 58, 0.05);
+  transition:
+    border-radius 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.social-account-trigger::after {
+  content: '▾';
+  color: #4c6d80;
+  font-size: 0.9rem;
+  flex: 0 0 auto;
+}
+
+.social-account-card.is-open .social-account-trigger {
+  border-color: #a9c9d9;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  box-shadow: 0 14px 24px rgba(13, 41, 58, 0.08);
+}
+
+.social-account-trigger-copy,
+.social-account-copy {
+  display: grid;
+  gap: 0.14rem;
+}
+
+.social-account-trigger-copy {
+  flex: 1 1 auto;
+}
+
+.social-account-trigger-copy strong {
+  color: #173647;
+}
+
+.social-account-trigger-copy p {
+  margin: 0;
+  color: #5b7889;
+  font-size: 0.84rem;
+}
+
+.social-account-menu {
+  position: absolute;
+  top: calc(100% - 1px);
+  left: 0;
+  z-index: 30;
+  width: 100%;
+  padding: 0.25rem 0;
+  display: grid;
+  gap: 0;
+  border: 1px solid #a9c9d9;
+  border-top: 0;
+  border-bottom-left-radius: 1rem;
+  border-bottom-right-radius: 1rem;
+  background:
+    radial-gradient(circle at top right, rgba(15, 139, 132, 0.12), transparent 8rem),
+    linear-gradient(180deg, #ffffff, #f7fcff);
+  box-shadow: 0 14px 24px rgba(13, 41, 58, 0.08);
+  transform-origin: top center;
+  animation: social-account-menu-in 180ms ease;
+}
+
+.social-account-copy h3,
+.social-account-page-copy h2,
+.social-account-panel h3,
+.social-account-section-head h3 {
+  margin: 0;
+  font-family: 'Fraunces', Georgia, serif;
+  color: #173647;
+}
+
+.social-account-copy p,
+.social-account-copy span,
+.social-account-page-copy p,
+.social-account-section-head p,
+.social-account-setting-card p,
+.social-account-preference-row p,
+.social-account-shortcut span {
+  margin: 0;
+  color: #567486;
+}
+
+.social-account-copy span {
+  margin-top: 0.3rem;
+  font-size: 0.82rem;
+  color: #0d726c;
+  font-weight: 700;
+}
+
+.social-account-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.social-account-summary article {
+  border: 1px solid #d6e6ee;
+  border-radius: 0.95rem;
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.18rem;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.social-account-summary strong {
+  color: #16394b;
+  font-size: 1.1rem;
+}
+
+.social-account-summary span {
+  color: #5d7a8b;
+  font-size: 0.82rem;
+  text-transform: lowercase;
+}
+
+.social-account-links,
+.social-account-shortcuts,
+.social-account-settings-grid,
+.social-account-preferences {
+  display: grid;
+  gap: 0;
+}
+
+.social-account-link,
+.social-account-shortcut {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 0.78rem 0.82rem;
+  background: transparent;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.social-account-link + .social-account-link {
+  border-top: 1px solid #d7e6ef;
+}
+
+.social-account-link:first-child {
+  border-top-left-radius: 0.75rem;
+  border-top-right-radius: 0.75rem;
+}
+
+.social-account-link:last-child {
+  border-bottom-left-radius: 0.75rem;
+  border-bottom-right-radius: 0.75rem;
+}
+
+.social-account-link::after {
+  content: '›';
+  color: #6c8797;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.social-account-link strong {
+  color: #173647;
+  font-size: 0.94rem;
+}
+
+.social-account-link:hover,
+.social-account-shortcut:hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+@keyframes social-account-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.social-account-link strong,
+.social-account-shortcut strong,
+.social-account-setting-card strong,
+.social-account-preference-row strong {
+  color: #1b4357;
+}
+
+.social-account-link span {
+  color: #5b7889;
+  font-size: 0.84rem;
+}
+
+.social-account-page {
+  padding: 1rem;
+  display: grid;
+  gap: 1rem;
+  background:
+    radial-gradient(circle at top right, rgba(255, 210, 133, 0.2), transparent 18rem),
+    linear-gradient(180deg, #ffffff, #f9fcff);
+}
+
+.social-account-page-header {
+  display: grid;
+  gap: 1rem;
+}
+
+.social-account-page-top {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.social-account-page-copy {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.social-account-page-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.social-account-page-tab {
+  border: 1px solid #cfe0ea;
+  border-radius: 999px;
+  padding: 0.5rem 0.82rem;
+  background: rgba(255, 255, 255, 0.86);
+  color: #416577;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.social-account-page-tab.is-active {
+  background: linear-gradient(145deg, #0f8b84, #0d726c);
+  border-color: #0d726c;
+  color: #fff;
+}
+
+.social-account-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 0.9rem;
+}
+
+.social-account-panel,
+.social-account-section {
+  padding: 0.95rem;
+  border-radius: 1.05rem;
+  border: 1px solid #d8e7ef;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.social-account-section {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.social-account-section-head {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.social-account-setting-card,
+.social-account-preference-row {
+  border: 1px solid #d9e7ef;
+  border-radius: 1rem;
+  padding: 0.85rem;
+  background: linear-gradient(180deg, #ffffff, #fbfdff);
+}
+
+.social-account-setting-card {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.social-account-setting-card span,
+.social-account-preference-row span {
+  color: #0d726c;
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+
+.social-account-preference-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
 }
 
 .social-action-btn {
@@ -191,22 +850,6 @@
   padding: 0.8rem;
 }
 
-.social-following-card h3,
-.social-discover-card h3,
-.social-empty-card h3,
-.social-profile-page-posts h3 {
-  margin: 0;
-  font-family: 'Fraunces', Georgia, serif;
-  color: #153647;
-}
-
-.social-following-card p,
-.social-discover-card p,
-.social-empty-card p {
-  margin: 0.2rem 0 0;
-  color: #577485;
-}
-
 .social-empty-text {
   margin-top: 0.55rem;
   font-size: 0.88rem;
@@ -214,9 +857,7 @@
 
 .social-following-list,
 .social-discover-list {
-  list-style: none;
-  margin: 0.72rem 0 0;
-  padding: 0;
+  margin-top: 0.72rem;
   display: grid;
   gap: 0.48rem;
 }
@@ -257,6 +898,10 @@
   border-radius: 0.88rem;
   padding: 0.56rem;
   background: #fff;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .social-user-card-head {
@@ -265,16 +910,45 @@
   background: transparent;
   padding: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.5rem;
   text-align: left;
   cursor: pointer;
+  min-width: 0;
+}
+
+.social-user-card-copy {
+  min-width: 0;
+}
+
+.social-user-card-copy strong {
+  display: block;
+  line-height: 1.15;
 }
 
 .social-user-card p,
 .social-user-card small {
   margin: 0.08rem 0;
   color: #5b7889;
+}
+
+.social-user-card p {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.social-user-card-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.social-user-card-actions .social-action-btn {
+  min-width: 104px;
+  justify-content: center;
+  padding: 0.42rem 0.8rem;
+  font-size: 0.95rem;
 }
 
 .social-profile-page {
@@ -311,31 +985,15 @@
   gap: 0.55rem;
 }
 
-.social-profile-posts-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.55rem;
-}
+@media (max-width: 920px) {
+  .social-account-overview-grid,
+  .social-recipe-grid {
+    grid-template-columns: 1fr;
+  }
 
-.social-profile-post-card {
-  border: 1px solid #d6e5ee;
-  border-radius: 0.86rem;
-  overflow: hidden;
-  background: #fff;
-}
-
-.social-profile-post-card img {
-  width: 100%;
-  height: 180px;
-  object-fit: cover;
-  display: block;
-}
-
-.social-profile-post-card p {
-  margin: 0;
-  padding: 0.48rem;
-  font-size: 0.85rem;
-  color: #2a4656;
+  .social-recipe-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 700px) {
@@ -343,11 +1001,39 @@
     height: 250px;
   }
 
-  .social-profile-page-header {
+  .social-profile-page-header,
+  .social-comment-form {
+    grid-template-columns: 1fr;
     flex-direction: column;
   }
 
-  .social-profile-posts-grid,
+  .social-counters,
+  .social-recipe-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .social-post-topline,
+  .social-account-preference-row,
+  .social-comment-form-actions,
+  .social-comments-head,
+  .social-recipe-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .social-recipe-head h4,
+  .social-comments-head h4 {
+    font-size: 1.35rem;
+  }
+
+  .social-account-menu-profile,
+  .social-account-page-top {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .social-recipe-stats,
   .social-counters {
     grid-template-columns: 1fr;
   }

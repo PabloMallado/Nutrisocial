@@ -1,17 +1,17 @@
 import { useMemo } from 'react'
+import { SocialAccountCard } from './components/SocialAccountCard'
 import { FollowingList } from './components/FollowingList'
 import { UserCard } from './components/UserCard'
-import type { SocialUser } from './types'
+import type { AccountSection, SocialUser } from './types'
 
 type SocialSidebarProps = {
   currentUser: SocialUser
   usersById: Record<string, SocialUser>
   followingUsers: SocialUser[]
   followingSet: Set<string>
-  requestSet: Set<string>
   onOpenProfile: (userId: string) => void
+  onOpenAccountSection: (section: AccountSection) => void
   onFollowUser: (userId: string) => void
-  onSendFriendRequest: (userId: string) => void
 }
 
 export function SocialSidebar({
@@ -19,10 +19,9 @@ export function SocialSidebar({
   usersById,
   followingUsers,
   followingSet,
-  requestSet,
   onOpenProfile,
+  onOpenAccountSection,
   onFollowUser,
-  onSendFriendRequest,
 }: SocialSidebarProps) {
   const discoverUsers = useMemo(
     () =>
@@ -34,6 +33,11 @@ export function SocialSidebar({
 
   return (
     <>
+      <SocialAccountCard
+        currentUser={currentUser}
+        onOpenAccountSection={onOpenAccountSection}
+      />
+
       <FollowingList
         currentUserName={currentUser.username}
         followingUsers={followingUsers}
@@ -43,7 +47,6 @@ export function SocialSidebar({
       <section className="social-discover-card">
         <header>
           <h3>Descubrir perfiles</h3>
-          <p>Perfiles sugeridos para ampliar tu red.</p>
         </header>
 
         <div className="social-discover-list">
@@ -52,10 +55,8 @@ export function SocialSidebar({
               key={user.id}
               user={user}
               isFollowing={followingSet.has(user.id)}
-              hasRequest={requestSet.has(user.id)}
               onOpenProfile={onOpenProfile}
               onFollow={onFollowUser}
-              onSendFriendRequest={onSendFriendRequest}
             />
           ))}
         </div>
