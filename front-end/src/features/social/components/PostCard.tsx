@@ -56,7 +56,7 @@ export function PostCard({
           className="social-expand-btn"
           onClick={() => setIsExpanded((current) => !current)}
         >
-          {isExpanded ? 'Ocultar detalle' : 'Abrir publicacion'}
+          {isExpanded ? 'Ocultar detalle' : 'Abrir publicación'}
         </button>
       </div>
 
@@ -108,11 +108,11 @@ export function PostCard({
               </article>
               <article>
                 <strong>{post.recipe.prepTimeMinutes} min</strong>
-                <span>preparacion</span>
+                <span>preparación</span>
               </article>
               <article>
                 <strong>{post.recipe.protein} g</strong>
-                <span>proteina</span>
+                <span>proteína</span>
               </article>
               <article>
                 <strong>{post.recipe.carbs} g</strong>
@@ -138,7 +138,7 @@ export function PostCard({
               </div>
 
               <div className="social-recipe-block">
-                <h5>Preparacion</h5>
+                <h5>Preparación</h5>
                 <ol className="social-recipe-steps">
                   {post.recipe.steps.map((step) => (
                     <li key={`${post.id}-${step}`}>{step}</li>
@@ -151,7 +151,7 @@ export function PostCard({
           <section className="social-comments-panel">
             <div className="social-comments-head">
               <div>
-                <p className="social-post-kicker">Conversacion</p>
+                <p className="social-post-kicker">Conversación</p>
                 <h4>Preguntas y comentarios</h4>
                 <p className="social-comments-subtitle">
                   Resuelve dudas sobre ingredientes, tiempos o posibles cambios en la receta.
@@ -183,7 +183,7 @@ export function PostCard({
             <div className="social-comment-list">
               {comments.length === 0 ? (
                 <article className="social-comment-card is-empty">
-                  <p>Todavia no hay preguntas en esta publicacion. Puedes abrir la conversacion.</p>
+                  <p>Todavía no hay preguntas en esta publicación. Puedes abrir la conversación.</p>
                 </article>
               ) : null}
 

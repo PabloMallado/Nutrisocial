@@ -11,7 +11,7 @@ export function FriendRequestButton({ hasRequest, onClick }: FriendRequestButton
       onClick={onClick}
       disabled={hasRequest}
     >
-      {hasRequest ? 'Solicitud enviada' : 'Anadir'}
+      {hasRequest ? 'Solicitud enviada' : 'Añadir'}
     </button>
   )
 }

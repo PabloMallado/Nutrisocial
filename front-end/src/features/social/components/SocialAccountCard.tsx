@@ -4,6 +4,7 @@ import type { AccountSection, SocialUser } from '../types'
 type SocialAccountCardProps = {
   currentUser: SocialUser
   onOpenAccountSection: (section: AccountSection) => void
+  onLogout: () => void
 }
 
 const accountLinks: Array<{ id: AccountSection; label: string; description: string }> = [
@@ -16,6 +17,7 @@ const accountLinks: Array<{ id: AccountSection; label: string; description: stri
 export function SocialAccountCard({
   currentUser,
   onOpenAccountSection,
+  onLogout,
 }: SocialAccountCardProps) {
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef<HTMLElement | null>(null)
@@ -70,6 +72,17 @@ export function SocialAccountCard({
                 <strong>{link.label}</strong>
               </button>
             ))}
+            <button
+              type="button"
+              className="social-account-link social-account-logout"
+              onClick={() => {
+                setIsOpen(false)
+                onLogout()
+              }}
+              role="menuitem"
+            >
+              <strong>Cerrar sesión</strong>
+            </button>
           </div>
         </div>
       ) : null}

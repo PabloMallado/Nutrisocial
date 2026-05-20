@@ -26,7 +26,7 @@ async function isReachable(url) {
 function runProcess(command, args, label, extraEnv = {}) {
   const child = spawn(command, args, {
     stdio: 'inherit',
-    shell: false,
+    shell: isWindows && command === npmCommand,
     cwd: projectRoot,
     env: { ...process.env, ...extraEnv },
   })

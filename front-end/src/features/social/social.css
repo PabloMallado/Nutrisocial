@@ -496,8 +496,12 @@
 .social-user-card-actions {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.65rem;
   flex-wrap: wrap;
+}
+
+.social-profile-actions {
+  margin-top: 0.3rem;
 }
 
 .social-account-card {
@@ -685,6 +689,14 @@
   font-size: 0.94rem;
 }
 
+.social-account-logout::after {
+  content: '';
+}
+
+.social-account-logout strong {
+  color: #a53323;
+}
+
 .social-account-link:hover,
 .social-account-shortcut:hover {
   transform: none;
@@ -814,8 +826,70 @@
   gap: 0.8rem;
 }
 
+.theme-switch {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #1b4357;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.theme-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.theme-switch-track {
+  width: 3.25rem;
+  height: 1.75rem;
+  border: 1px solid #b9d2df;
+  border-radius: 999px;
+  padding: 0.18rem;
+  background: linear-gradient(180deg, #f6fbff, #e7f3fa);
+  box-shadow: inset 0 1px 3px rgba(13, 41, 58, 0.12);
+}
+
+.theme-switch-thumb {
+  width: 1.28rem;
+  height: 1.28rem;
+  border-radius: 50%;
+  display: block;
+  background: #ffffff;
+  box-shadow: 0 4px 10px rgba(13, 41, 58, 0.2);
+  transform: translateX(0);
+  transition: transform 180ms ease, background 180ms ease;
+}
+
+.theme-switch input:checked + .theme-switch-track {
+  border-color: #1aa99d;
+  background: linear-gradient(145deg, #0f8b84, #0d726c);
+}
+
+.theme-switch input:checked + .theme-switch-track .theme-switch-thumb {
+  background: #dffdf9;
+  transform: translateX(1.46rem);
+}
+
+.theme-switch input:focus-visible + .theme-switch-track {
+  outline: 3px solid rgba(15, 139, 132, 0.24);
+  outline-offset: 3px;
+}
+
+.theme-switch-label {
+  min-width: 3.4rem;
+  color: #0d726c;
+  font-size: 0.86rem;
+}
+
 .social-action-btn {
-  padding: 0.46rem 0.68rem;
+  min-height: 2.4rem;
+  padding: 0.52rem 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .social-action-btn.is-primary {
@@ -983,6 +1057,170 @@
 .social-profile-page-posts {
   display: grid;
   gap: 0.55rem;
+}
+
+.app-shell[data-theme='dark'] .social-intro-card,
+.app-shell[data-theme='dark'] .social-account-card,
+.app-shell[data-theme='dark'] .social-account-page,
+.app-shell[data-theme='dark'] .social-account-panel,
+.app-shell[data-theme='dark'] .social-account-section,
+.app-shell[data-theme='dark'] .social-post-card,
+.app-shell[data-theme='dark'] .social-following-card,
+.app-shell[data-theme='dark'] .social-discover-card,
+.app-shell[data-theme='dark'] .social-empty-card,
+.app-shell[data-theme='dark'] .social-profile-page,
+.app-shell[data-theme='dark'] .social-feed-stack,
+.app-shell[data-theme='dark'] .social-account-menu,
+.app-shell[data-theme='dark'] .social-account-trigger,
+.app-shell[data-theme='dark'] .social-recipe-panel,
+.app-shell[data-theme='dark'] .social-comments-panel,
+.app-shell[data-theme='dark'] .social-recipe-block,
+.app-shell[data-theme='dark'] .social-comment-form,
+.app-shell[data-theme='dark'] .social-comment-card,
+.app-shell[data-theme='dark'] .social-post-meta span,
+.app-shell[data-theme='dark'] .social-recipe-stats article,
+.app-shell[data-theme='dark'] .social-counters div,
+.app-shell[data-theme='dark'] .social-account-summary article,
+.app-shell[data-theme='dark'] .social-account-setting-card,
+.app-shell[data-theme='dark'] .social-account-preference-row,
+.app-shell[data-theme='dark'] .social-following-list li button,
+.app-shell[data-theme='dark'] .social-user-card {
+  border-color: var(--line);
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--primary) 10%, transparent), transparent 16rem),
+    var(--bg-card-solid);
+  box-shadow: var(--shadow);
+}
+
+.app-shell[data-theme='dark'] .social-post-card {
+  box-shadow: none;
+}
+
+.app-shell[data-theme='dark'] .social-intro-card,
+.app-shell[data-theme='dark'] .social-feed-header,
+.app-shell[data-theme='dark'] .social-account-page,
+.app-shell[data-theme='dark'] .social-profile-page {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--primary) 16%, transparent), transparent 18rem),
+    linear-gradient(180deg, var(--bg-card-solid), var(--bg-soft));
+}
+
+.app-shell[data-theme='dark'] .social-intro-card h2,
+.app-shell[data-theme='dark'] .social-following-card h3,
+.app-shell[data-theme='dark'] .social-discover-card h3,
+.app-shell[data-theme='dark'] .social-empty-card h3,
+.app-shell[data-theme='dark'] .social-profile-page-posts h3,
+.app-shell[data-theme='dark'] .social-feed-header h2,
+.app-shell[data-theme='dark'] .social-post-copy h3,
+.app-shell[data-theme='dark'] .social-recipe-head h4,
+.app-shell[data-theme='dark'] .social-comments-head h4,
+.app-shell[data-theme='dark'] .social-account-copy h3,
+.app-shell[data-theme='dark'] .social-account-page-copy h2,
+.app-shell[data-theme='dark'] .social-account-panel h3,
+.app-shell[data-theme='dark'] .social-account-section-head h3,
+.app-shell[data-theme='dark'] .social-account-link strong,
+.app-shell[data-theme='dark'] .social-account-shortcut strong,
+.app-shell[data-theme='dark'] .social-account-setting-card strong,
+.app-shell[data-theme='dark'] .social-account-preference-row strong,
+.app-shell[data-theme='dark'] .social-following-list strong,
+.app-shell[data-theme='dark'] .social-user-card strong,
+.app-shell[data-theme='dark'] .social-profile-page-copy h2,
+.app-shell[data-theme='dark'] .social-account-summary strong,
+.app-shell[data-theme='dark'] .social-recipe-stats strong,
+.app-shell[data-theme='dark'] .social-counters strong,
+.app-shell[data-theme='dark'] .social-account-trigger-copy strong,
+.app-shell[data-theme='dark'] .theme-switch {
+  color: var(--text);
+}
+
+.app-shell[data-theme='dark'] .social-intro-card p,
+.app-shell[data-theme='dark'] .social-following-card p,
+.app-shell[data-theme='dark'] .social-discover-card p,
+.app-shell[data-theme='dark'] .social-empty-card p,
+.app-shell[data-theme='dark'] .social-author-row p,
+.app-shell[data-theme='dark'] .social-post-meta,
+.app-shell[data-theme='dark'] .social-post-copy p:last-child,
+.app-shell[data-theme='dark'] .social-recipe-description,
+.app-shell[data-theme='dark'] .social-comment-card p,
+.app-shell[data-theme='dark'] .social-recipe-subtitle,
+.app-shell[data-theme='dark'] .social-comments-subtitle,
+.app-shell[data-theme='dark'] .social-recipe-list li,
+.app-shell[data-theme='dark'] .social-recipe-steps li,
+.app-shell[data-theme='dark'] .social-comment-form-actions span,
+.app-shell[data-theme='dark'] .social-account-copy p,
+.app-shell[data-theme='dark'] .social-account-copy span,
+.app-shell[data-theme='dark'] .social-account-page-copy p,
+.app-shell[data-theme='dark'] .social-account-section-head p,
+.app-shell[data-theme='dark'] .social-account-setting-card p,
+.app-shell[data-theme='dark'] .social-account-preference-row p,
+.app-shell[data-theme='dark'] .social-account-shortcut span,
+.app-shell[data-theme='dark'] .social-account-link span,
+.app-shell[data-theme='dark'] .social-account-summary span,
+.app-shell[data-theme='dark'] .social-recipe-stats span,
+.app-shell[data-theme='dark'] .social-counters span,
+.app-shell[data-theme='dark'] .social-following-list span,
+.app-shell[data-theme='dark'] .social-user-card p,
+.app-shell[data-theme='dark'] .social-user-card small,
+.app-shell[data-theme='dark'] .social-profile-page-copy p {
+  color: var(--muted);
+}
+
+.app-shell[data-theme='dark'] .social-account-trigger-copy p {
+  color: #8ed8ea;
+}
+
+.app-shell[data-theme='dark'] .social-account-logout strong {
+  color: #ffb2a4;
+}
+
+.app-shell[data-theme='dark'] .social-post-meta span,
+.app-shell[data-theme='dark'] .social-recipe-pill,
+.app-shell[data-theme='dark'] .social-comments-count {
+  border-color: var(--line-strong);
+  background: var(--control-bg);
+  color: var(--control-text);
+}
+
+.app-shell[data-theme='dark'] .social-expand-btn,
+.app-shell[data-theme='dark'] .social-post-actions button,
+.app-shell[data-theme='dark'] .social-action-btn,
+.app-shell[data-theme='dark'] .social-comment-form-actions button,
+.app-shell[data-theme='dark'] .social-account-page-tab {
+  border-color: var(--line-strong);
+  background: var(--control-bg);
+  color: var(--control-text);
+}
+
+.app-shell[data-theme='dark'] .social-account-page-tab.is-active,
+.app-shell[data-theme='dark'] .social-action-btn.is-primary {
+  border-color: var(--primary-strong);
+  background: linear-gradient(145deg, var(--primary), var(--primary-strong));
+  color: #ffffff;
+}
+
+.app-shell[data-theme='dark'] .social-account-link + .social-account-link,
+.app-shell[data-theme='dark'] .social-feed-header + .social-post-card,
+.app-shell[data-theme='dark'] .social-post-card + .social-post-card,
+.app-shell[data-theme='dark'] .social-feed-header + .social-empty-card {
+  border-color: var(--line);
+}
+
+.app-shell[data-theme='dark'] .social-comment-form textarea {
+  border-color: var(--line-strong);
+  background: var(--bg-input);
+  color: var(--text);
+}
+
+.app-shell[data-theme='dark'] .theme-switch-track {
+  border-color: var(--line-strong);
+  background: #10212a;
+}
+
+.app-shell[data-theme='dark'] .theme-switch-label,
+.app-shell[data-theme='dark'] .social-post-kicker,
+.app-shell[data-theme='dark'] .social-account-setting-card span,
+.app-shell[data-theme='dark'] .social-account-preference-row span {
+  color: #75e5dc;
 }
 
 @media (max-width: 920px) {

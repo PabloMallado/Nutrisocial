@@ -11,9 +11,9 @@ import { SocialProfilePage } from './features/social/SocialProfilePage'
 import { SocialSidebar } from './features/social/SocialSidebar'
 import { useSocialState } from './features/social/use-social-state'
 import { useUserLocation } from './hooks/use-user-location'
-import { API_BASE_URL, apiRequest } from './services/http'
+import { apiRequest } from './services/http'
 import { getNearbyStores, searchProducts } from './services/location-shopping-api'
-import type { AccountSection, FeedTab } from './features/social/types'
+import type { AccountSection, FeedTab, SocialUser } from './features/social/types'
 import type { NearbyStoreResult, ProductSuggestion } from './types/location-shopping'
 
 
@@ -21,10 +21,8 @@ type User = { id: string; name: string; handle: string }
 type Store = { id: string; name: string; description: string; address: string; city: string; logo: string; accent: string; image: string | null }
 type Product = { id: string; name: string; category: string; brand: string; storeId: string; referenceAmount: number; referenceUnit: string; image: string | null; price: number; stock: number; calories: number; protein: number; carbs: number; fat: number }
 type Recipe = { id: string; userId: string; storeId: string | null; title: string; description: string; steps: string; image: string | null; servings: number; prepTime: number; difficulty: string; caloriesTotal: number; proteinTotal: number; carbsTotal: number; fatTotal: number }
-type ProductForm = { name: string; category: string; brand: string; storeId: string; referenceAmount: string; referenceUnit: string; calories: string; protein: string; carbs: string; fat: string; price: string; stock: string; imageUrl: string }
-type StoreForm = { name: string; city: string; description: string; address: string; logo: string; accent: string; imageUrl: string }
 type RecipeForm = { title: string; description: string; steps: string; userId: string; storeId: string; difficulty: string; servings: string; prepTime: string; imageUrl: string; ingredients: Array<{ productId: string; quantity: string; unit: string }> }
-type RecipeIngredientDetail = { product_id: number; name: string; brand: string; category: string; calories: number; protein: number | string; carbs: number | string; fat: number | string; reference_amount: number | string; reference_unit: string; quantity: number | string; unit: string }
+type RecipeIngredientDetail = { product_id: number; name: string; brand: string; category: string; image_url: string | null; calories: number; protein: number | string; carbs: number | string; fat: number | string; reference_amount: number | string; reference_unit: string; quantity: number | string; unit: string }
 type RecipeDetail = { id: number; user_id: number; store_id: string | null; title: string; description: string | null; steps: string | null; image_url: string | null; servings: number; prep_time: number; difficulty: string; ingredients: RecipeIngredientDetail[] }
 type ApiBootstrap = {
   users: Array<{ id: number; name: string; handle: string }>
@@ -32,27 +30,161 @@ type ApiBootstrap = {
   products: Array<{ id: number; name: string; category: string; brand: string; store_id: string; reference_amount: number | string; reference_unit: string; image_url: string | null; price: number | string; stock: number; calories: number; protein: number | string; carbs: number | string; fat: number | string }>
   recipes: Array<{ id: number; user_id: number; store_id: string | null; title: string; description: string | null; steps: string | null; image_url: string | null; servings: number; prep_time: number; difficulty: string; calories_total: number | string; protein_total: number | string; carbs_total: number | string; fat_total: number | string }>
 }
-type ApiHealth = {
-  ok: boolean
-  service: string
-  db: string
-  metrics?: { users: number; recipes: number; products: number }
-}
-type DeleteDialog = { type: 'product' | 'store' | 'recipe'; id: string; label: string }
-type ShoppingPlanResponse = {
-  recipes: Array<{ id: number; title: string; store_id: string | null; calories_total: number; protein_total: number; carbs_total: number; fat_total: number }>
-  items: Array<{ product_id: number; name: string; brand: string; category: string; quantity: number; unit: string; estimated_cost: number; recipes: string[]; store_id: string | null }>
-  stores: Array<{ store_id: string; store_name: string; store_city: string | null; items: number; estimated_cost: number }>
-  summary: { calories: number; protein: number; carbs: number; fat: number; estimated_cost: number }
-}
-const blankProductForm: ProductForm = { name: '', category: '', brand: '', storeId: '', referenceAmount: '100', referenceUnit: 'g', calories: '0', protein: '0', carbs: '0', fat: '0', price: '0', stock: '0', imageUrl: '' }
-const blankStoreForm: StoreForm = { name: '', city: '', description: '', address: '', logo: 'ST', accent: '#3b82f6', imageUrl: '' }
-const blankRecipeForm = (users: User[], stores: Store[]): RecipeForm => ({ title: '', description: '', steps: '', userId: users[0]?.id || '', storeId: stores[0]?.id || '', difficulty: 'Media', servings: '1', prepTime: '0', imageUrl: '', ingredients: [{ productId: '', quantity: '1', unit: 'g' }] })
+type AuthUser = { id: number; name: string; handle: string; avatar_url: string | null }
+type AuthResponse = { ok: boolean; user: AuthUser }
+type DeleteDialog = { type: 'recipe'; id: string; label: string }
+type ThemeMode = 'light' | 'dark'
+type AuthMode = 'login' | 'register'
+type IngredientStep = 'select' | 'amount'
+type ImportedProductPreview = { id: number; name: string; brand: string; category: string; store: string; image_url: string | null; status: 'imported' | 'updated' }
+type OpenFoodFactsImportResponse = { imported: number; updated: number; skipped: number; storesTouched: number; query: string; products: ImportedProductPreview[] }
+const allowedStoreTokens = [
+  'alcampo',
+  'al campo',
+  'aldi',
+  'carrefour',
+  'carrefour express',
+  'consum',
+  'coviran',
+  'dia',
+  'el dia',
+  'eroski',
+  'eroki',
+  'lidl',
+  'mercadona',
+]
+const hiddenStoreNames = new Set([
+  'open food facts',
+  'spar',
+  'tesco',
+  'sulet 365',
+  'sole365',
+  'monoprix',
+  'monopix',
+  "gadis",
+  "gaddy's",
+  'gaddys',
+  'esclad',
+  'esclat',
+  'co-op',
+  'coop',
+  'lampu',
+  'conad',
+  'carrefour.fr',
+  'ahorramas',
+  'ahorra mas',
+  'hacendado mercadona',
+  'zendado mercadona',
+])
+
+const blankRecipeForm = (userId = ''): RecipeForm => ({ title: '', description: '', steps: '', userId, storeId: '', difficulty: 'Media', servings: '1', prepTime: '0', imageUrl: '', ingredients: [] })
 const fetchJson = <T,>(path: string) => apiRequest<T>(path)
 const postJson = (path: string, body: unknown) => apiRequest(path, { method: 'POST', body: JSON.stringify(body) })
-const putJson = (path: string, body: unknown) => apiRequest(path, { method: 'PUT', body: JSON.stringify(body) })
 const deleteJson = (path: string) => apiRequest(path, { method: 'DELETE' })
 const n = (value: string, fallback = 0) => (Number.isFinite(Number(value)) ? Number(value) : fallback)
+const readStoredTheme = (): ThemeMode => {
+  if (typeof window === 'undefined') return 'light'
+  return window.localStorage.getItem('nutrisocial-theme') === 'dark' ? 'dark' : 'light'
+}
+
+const readStoredAuthUser = (): AuthUser | null => {
+  if (typeof window === 'undefined') return null
+  window.localStorage.removeItem('nutrisocial-auth-user')
+  const rawValue = window.sessionStorage.getItem('nutrisocial-auth-user')
+  if (!rawValue) return null
+  try {
+    return JSON.parse(rawValue) as AuthUser
+  } catch {
+    window.sessionStorage.removeItem('nutrisocial-auth-user')
+    return null
+  }
+}
+
+const storeAuthUser = (user: AuthUser | null) => {
+  if (!user) {
+    window.sessionStorage.removeItem('nutrisocial-auth-user')
+    return
+  }
+  window.sessionStorage.setItem('nutrisocial-auth-user', JSON.stringify(user))
+}
+
+const readRememberedUsername = () => {
+  if (typeof window === 'undefined') return ''
+  return window.localStorage.getItem('nutrisocial-remembered-username') ?? ''
+}
+
+const storeRememberedUsername = (username: string | null) => {
+  if (!username) {
+    window.localStorage.removeItem('nutrisocial-remembered-username')
+    return
+  }
+  window.localStorage.setItem('nutrisocial-remembered-username', username)
+}
+
+const authUserToSocialUser = (authUser: AuthUser | null, fallbackUser: SocialUser): SocialUser => {
+  if (!authUser) return fallbackUser
+  return {
+    ...fallbackUser,
+    id: `auth-${authUser.id}`,
+    displayName: authUser.name,
+    username: authUser.handle,
+    avatarUrl: authUser.avatar_url || fallbackUser.avatarUrl,
+  }
+}
+
+const normalizeDisplayStoreName = (name: string) => {
+  const normalized = name.trim().toLowerCase()
+  if (normalized.includes('mercadona')) return 'Mercadona'
+  return name
+}
+
+const normalizeStoreToken = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+
+const shouldShowStore = (store: Store) => {
+  const normalizedName = normalizeStoreToken(store.name.trim())
+  const normalizedId = normalizeStoreToken(store.id)
+  const allowed = allowedStoreTokens.some((token) => normalizedName.includes(token) || normalizedId.includes(token))
+  return store.id !== 'open-food-facts' && allowed && !hiddenStoreNames.has(normalizedName)
+}
+
+const shouldShowProduct = (product: Product, store: Store | undefined) => Boolean(product.image) && (store ? shouldShowStore(store) : false)
+
+const productStoreLabel = (store: Store | undefined) => {
+  if (!store || !shouldShowStore(store)) return 'Catálogo base'
+  return normalizeDisplayStoreName(store.name)
+}
+
+const storeLogoUrl = (store: Store) => {
+  const name = normalizeStoreToken(`${normalizeDisplayStoreName(store.name)} ${store.id}`)
+  const domains: Array<[string, string]> = [
+    ['mercadona', 'mercadona.es'],
+    ['carrefour', 'carrefour.es'],
+    ['alcampo', 'alcampo.es'],
+    ['lidl', 'lidl.es'],
+    ['dia', 'dia.es'],
+    ['consum', 'consum.es'],
+    ['eroski', 'eroski.es'],
+    ['aldi', 'aldi.es'],
+    ['coviran', 'coviran.es'],
+  ]
+  const match = domains.find(([token]) => name.includes(token))
+  return match ? `https://www.google.com/s2/favicons?domain=${match[1]}&sz=64` : null
+}
+
+const calculateProductMacros = (product: Product, grams: number) => {
+  const factor = Math.max(0, grams) / Math.max(1, product.referenceAmount || 100)
+  return {
+    calories: product.calories * factor,
+    protein: product.protein * factor,
+    carbs: product.carbs * factor,
+    fat: product.fat * factor,
+  }
+}
+
 function App() {
   const navigate = useNavigate()
   const locationRoute = useLocation()
@@ -78,24 +210,35 @@ function App() {
   const [users, setUsers] = useState<User[]>([])
   const [storesCrud, setStoresCrud] = useState<Store[]>([])
   const [productsCrud, setProductsCrud] = useState<Product[]>([])
+  const [brokenProductImageIds, setBrokenProductImageIds] = useState<Set<string>>(() => new Set())
   const [recipesCrud, setRecipesCrud] = useState<Recipe[]>([])
   const [crudMessage, setCrudMessage] = useState<string | null>(null)
-  const [shoppingPlanRecipeIds, setShoppingPlanRecipeIds] = useState<string[]>([])
-  const [shoppingPlanLoading, setShoppingPlanLoading] = useState(false)
-  const [shoppingPlanData, setShoppingPlanData] = useState<ShoppingPlanResponse | null>(null)
-  const [apiHealth, setApiHealth] = useState<ApiHealth | null>(null)
-  const [apiHealthLoading, setApiHealthLoading] = useState(true)
-  const [apiHealthError, setApiHealthError] = useState<string | null>(null)
-  const [showProductForm, setShowProductForm] = useState(false)
-  const [showStoreForm, setShowStoreForm] = useState(false)
+  const [productSearchModalOpen, setProductSearchModalOpen] = useState(false)
+  const [externalImportQuery, setExternalImportQuery] = useState('')
+  const [externalImportLoading, setExternalImportLoading] = useState(false)
+  const [externalImportSummary, setExternalImportSummary] = useState<string | null>(null)
+  const [externalImportResults, setExternalImportResults] = useState<ImportedProductPreview[]>([])
   const [showRecipeForm, setShowRecipeForm] = useState(false)
-  const [editingProductId, setEditingProductId] = useState<string | null>(null)
-  const [editingStoreId, setEditingStoreId] = useState<string | null>(null)
-  const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null)
-  const [productForm, setProductForm] = useState<ProductForm>(blankProductForm)
-  const [storeForm, setStoreForm] = useState<StoreForm>(blankStoreForm)
-  const [recipeForm, setRecipeForm] = useState<RecipeForm>(blankRecipeForm([], []))
+  const [recipeForm, setRecipeForm] = useState<RecipeForm>(blankRecipeForm())
+  const [ingredientPickerOpen, setIngredientPickerOpen] = useState(false)
+  const [ingredientStep, setIngredientStep] = useState<IngredientStep>('select')
+  const [ingredientProductId, setIngredientProductId] = useState('')
+  const [ingredientGrams, setIngredientGrams] = useState('100')
+  const [ingredientSearch, setIngredientSearch] = useState('')
+  const [ingredientStoreFilters, setIngredientStoreFilters] = useState<string[]>([])
+  const [selectedRecipeDetail, setSelectedRecipeDetail] = useState<RecipeDetail | null>(null)
+  const [recipeDetailLoading, setRecipeDetailLoading] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialog | null>(null)
+  const [themeMode, setThemeMode] = useState<ThemeMode>(readStoredTheme)
+  const [authUser, setAuthUser] = useState<AuthUser | null>(readStoredAuthUser)
+  const [authMode, setAuthMode] = useState<AuthMode>('login')
+  const [authName, setAuthName] = useState('')
+  const [authUsername, setAuthUsername] = useState(readRememberedUsername)
+  const [authPassword, setAuthPassword] = useState('')
+  const [authConfirmPassword, setAuthConfirmPassword] = useState('')
+  const [authRememberUsername, setAuthRememberUsername] = useState(() => readRememberedUsername().length > 0)
+  const [authMessage, setAuthMessage] = useState<string | null>(null)
+  const [authLoading, setAuthLoading] = useState(false)
   const {
     currentUser: socialCurrentUser,
     usersById: socialUsersById,
@@ -110,20 +253,6 @@ function App() {
     getUserPosts,
   } = useSocialState()
 
-  const refreshApiHealth = useCallback(async () => {
-    setApiHealthLoading(true)
-    try {
-      const health = await fetchJson<ApiHealth>('/api/health')
-      setApiHealth(health)
-      setApiHealthError(null)
-    } catch (error) {
-      setApiHealth(null)
-      setApiHealthError(error instanceof Error ? error.message : 'No se pudo comprobar la API')
-    } finally {
-      setApiHealthLoading(false)
-    }
-  }, [])
-
   const loadCrudData = useCallback(async () => {
     const data = await fetchJson<ApiBootstrap>('/api/bootstrap')
     setUsers(data.users.map((u) => ({ id: String(u.id), name: u.name, handle: u.handle })))
@@ -133,14 +262,21 @@ function App() {
   }, [])
 
   useEffect(() => {
-    refreshApiHealth().catch(() => undefined)
     loadCrudData().catch((err) => setCrudMessage((err as Error).message))
-  }, [loadCrudData, refreshApiHealth])
+  }, [loadCrudData])
 
   useEffect(() => {
-    setProductForm((p) => ({ ...p, storeId: p.storeId || storesCrud[0]?.id || '' }))
-    setRecipeForm((p) => ({ ...p, userId: p.userId || users[0]?.id || '', storeId: p.storeId || storesCrud[0]?.id || '' }))
-  }, [storesCrud, users])
+    document.documentElement.dataset.theme = themeMode
+    window.localStorage.setItem('nutrisocial-theme', themeMode)
+  }, [themeMode])
+
+  useEffect(() => {
+    storeAuthUser(authUser)
+  }, [authUser])
+
+  useEffect(() => {
+    setRecipeForm((p) => ({ ...p, userId: p.userId || (authUser ? String(authUser.id) : users[0]?.id || '') }))
+  }, [authUser, users])
 
   useEffect(() => {
     const normalized = query.trim()
@@ -255,31 +391,46 @@ function App() {
   }, [nearbyStores, prioritizeAvailable])
 
   const storeById = useMemo(() => new Map(storesCrud.map((s) => [s.id, s])), [storesCrud])
-  const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users])
+  const productById = useMemo(() => new Map(productsCrud.map((product) => [product.id, product])), [productsCrud])
+  const visibleStoresCrud = useMemo(() => storesCrud.filter(shouldShowStore), [storesCrud])
+  const visibleProductsCrud = useMemo(
+    () => productsCrud.filter((product) => shouldShowProduct(product, storeById.get(product.storeId)) && !brokenProductImageIds.has(product.id)),
+    [brokenProductImageIds, productsCrud, storeById],
+  )
+  const ingredientStores = useMemo(
+    () => visibleStoresCrud.filter((store) => productsCrud.some((product) => product.storeId === store.id)),
+    [productsCrud, visibleStoresCrud],
+  )
+  const filteredIngredientProducts = useMemo(() => {
+    const search = normalizeStoreToken(ingredientSearch)
+    return productsCrud.filter((product) => {
+      if (!shouldShowProduct(product, storeById.get(product.storeId)) || brokenProductImageIds.has(product.id)) return false
+      if (ingredientStoreFilters.length > 0 && !ingredientStoreFilters.includes(product.storeId)) return false
+      if (!search) return true
+      const store = storeById.get(product.storeId)
+      const haystack = normalizeStoreToken(`${product.name} ${product.brand} ${product.category} ${store?.name ?? ''}`)
+      return haystack.includes(search)
+    })
+  }, [brokenProductImageIds, ingredientSearch, ingredientStoreFilters, productsCrud, storeById])
+  const selectedIngredientProduct = ingredientProductId ? productById.get(ingredientProductId) ?? null : null
+  const selectedIngredientMacroPreview = selectedIngredientProduct
+    ? calculateProductMacros(selectedIngredientProduct, n(ingredientGrams))
+    : { calories: 0, protein: 0, carbs: 0, fat: 0 }
 
-  function resetProductEditor() {
-    setEditingProductId(null)
-    setProductForm((p) => ({ ...blankProductForm, storeId: p.storeId || storesCrud[0]?.id || '' }))
-  }
-
-  function resetStoreEditor() {
-    setEditingStoreId(null)
-    setStoreForm(blankStoreForm)
-  }
+  useEffect(() => {
+    if (!ingredientProductId) return
+    if (filteredIngredientProducts.some((product) => product.id === ingredientProductId)) return
+    setIngredientProductId('')
+  }, [filteredIngredientProducts, ingredientProductId])
 
   function resetRecipeEditor() {
-    setEditingRecipeId(null)
-    setRecipeForm(blankRecipeForm(users, storesCrud))
-  }
-
-  function closeProductForm() {
-    setShowProductForm(false)
-    resetProductEditor()
-  }
-
-  function closeStoreForm() {
-    setShowStoreForm(false)
-    resetStoreEditor()
+    setRecipeForm(blankRecipeForm(authUser ? String(authUser.id) : users[0]?.id || ''))
+    setIngredientPickerOpen(false)
+    setIngredientStep('select')
+    setIngredientProductId('')
+    setIngredientGrams('100')
+    setIngredientSearch('')
+    setIngredientStoreFilters([])
   }
 
   function closeRecipeForm() {
@@ -287,114 +438,69 @@ function App() {
     resetRecipeEditor()
   }
 
-  function startEditProduct(product: Product) {
-    setEditingProductId(product.id)
-    setShowProductForm(true)
-    setProductForm({
-      name: product.name,
-      category: product.category,
-      brand: product.brand,
-      storeId: product.storeId,
-      referenceAmount: String(product.referenceAmount),
-      referenceUnit: product.referenceUnit,
-      calories: String(product.calories),
-      protein: String(product.protein),
-      carbs: String(product.carbs),
-      fat: String(product.fat),
-      price: String(product.price),
-      stock: String(product.stock),
-      imageUrl: product.image ?? '',
-    })
+  function openRecipeForm() {
+    setShowRecipeForm(true)
+    setRecipeForm(blankRecipeForm(authUser ? String(authUser.id) : users[0]?.id || ''))
+    setIngredientPickerOpen(false)
+    setIngredientStep('select')
+    setIngredientProductId('')
+    setIngredientGrams('100')
+    setIngredientSearch('')
+    setIngredientStoreFilters([])
+    setCrudMessage(null)
   }
 
-  function startEditStore(store: Store) {
-    setEditingStoreId(store.id)
-    setShowStoreForm(true)
-    setStoreForm({
-      name: store.name,
-      city: store.city,
-      description: store.description,
-      address: store.address,
-      logo: store.logo,
-      accent: store.accent,
-      imageUrl: store.image ?? '',
-    })
+  function openIngredientPicker() {
+    setIngredientPickerOpen(true)
+    setIngredientStep('select')
+    setIngredientProductId('')
+    setIngredientGrams('100')
   }
 
-  async function startEditRecipe(recipeId: string) {
-    try {
-      const detail = await fetchJson<RecipeDetail>(`/api/recipes/${recipeId}`)
-      setEditingRecipeId(String(detail.id))
-      setShowRecipeForm(true)
-      setRecipeForm({
-        title: detail.title,
-        description: detail.description ?? '',
-        steps: detail.steps ?? '',
-        userId: String(detail.user_id),
-        storeId: detail.store_id ?? '',
-        difficulty: detail.difficulty,
-        servings: String(detail.servings ?? 1),
-        prepTime: String(detail.prep_time ?? 0),
-        imageUrl: detail.image_url ?? '',
-        ingredients: detail.ingredients.length > 0
-          ? detail.ingredients.map((ing) => ({ productId: String(ing.product_id), quantity: String(ing.quantity), unit: ing.unit || 'g' }))
-          : [{ productId: '', quantity: '1', unit: 'g' }],
-      })
-    } catch (err) {
-      setCrudMessage((err as Error).message)
-    }
+  function closeIngredientPicker() {
+    setIngredientPickerOpen(false)
+    setIngredientStep('select')
+    setIngredientProductId('')
+    setIngredientGrams('100')
   }
 
-  async function submitProduct(e: FormEvent) {
-    e.preventDefault()
-    const payload = {
-      name: productForm.name.trim(),
-      category: productForm.category.trim(),
-      brand: productForm.brand.trim(),
-      store_id: productForm.storeId,
-      reference_amount: n(productForm.referenceAmount, 100),
-      reference_unit: productForm.referenceUnit || 'g',
-      calories: Math.max(0, Math.floor(n(productForm.calories))),
-      protein: Math.max(0, n(productForm.protein)),
-      carbs: Math.max(0, n(productForm.carbs)),
-      fat: Math.max(0, n(productForm.fat)),
-      price: Math.max(0, n(productForm.price)),
-      stock: Math.max(0, Math.floor(n(productForm.stock))),
-      image_url: productForm.imageUrl.trim() || null,
-    }
-    try {
-      if (editingProductId) await putJson(`/api/products/${editingProductId}`, payload)
-      else await postJson('/api/products', payload)
-      setCrudMessage(editingProductId ? 'Producto actualizado.' : 'Producto añadido.')
-      await loadCrudData()
-      setShowProductForm(false)
-      resetProductEditor()
-    } catch (err) {
-      setCrudMessage((err as Error).message)
-    }
+  function toggleIngredientStoreFilter(storeId: string) {
+    setIngredientStoreFilters((current) => (
+      current.includes(storeId)
+        ? current.filter((id) => id !== storeId)
+        : [...current, storeId]
+    ))
   }
 
-  async function submitStore(e: FormEvent) {
-    e.preventDefault()
-    const payload = {
-      name: storeForm.name.trim(),
-      city: storeForm.city.trim(),
-      description: storeForm.description.trim() || null,
-      address: storeForm.address.trim() || null,
-      logo: storeForm.logo.trim().slice(0, 2).toUpperCase() || 'ST',
-      accent: storeForm.accent,
-      image_url: storeForm.imageUrl.trim() || null,
+  function handleRecipeImageFile(file: File | null) {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      setRecipeForm((current) => ({ ...current, imageUrl: String(reader.result ?? '') }))
     }
-    try {
-      if (editingStoreId) await putJson(`/api/stores/${editingStoreId}`, payload)
-      else await postJson('/api/stores', payload)
-      setCrudMessage(editingStoreId ? 'Tienda actualizada.' : 'Tienda añadida.')
-      await loadCrudData()
-      setShowStoreForm(false)
-      resetStoreEditor()
-    } catch (err) {
-      setCrudMessage((err as Error).message)
-    }
+    reader.readAsDataURL(file)
+  }
+
+  function addIngredientToRecipe() {
+    if (!selectedIngredientProduct || n(ingredientGrams) <= 0) return
+    setRecipeForm((current) => ({
+      ...current,
+      ingredients: [
+        ...current.ingredients,
+        { productId: selectedIngredientProduct.id, quantity: String(n(ingredientGrams)), unit: 'g' },
+      ],
+    }))
+    setIngredientProductId('')
+    setIngredientGrams('100')
+    setIngredientStep('select')
+    setIngredientPickerOpen(false)
+  }
+
+  function removeIngredientFromRecipe(index: number) {
+    setRecipeForm((current) => ({
+      ...current,
+      ingredients: current.ingredients.filter((_, currentIndex) => currentIndex !== index),
+    }))
   }
 
   async function submitRecipe(e: FormEvent) {
@@ -408,20 +514,19 @@ function App() {
     }
     const payload = {
       user_id: Number(recipeForm.userId),
-      store_id: recipeForm.storeId || null,
+      store_id: null,
       title: recipeForm.title.trim(),
       description: recipeForm.description.trim() || null,
       steps: recipeForm.steps.trim(),
       image_url: recipeForm.imageUrl.trim() || null,
-      servings: Math.max(1, Math.floor(n(recipeForm.servings, 1))),
-      prep_time: Math.max(0, Math.floor(n(recipeForm.prepTime))),
-      difficulty: recipeForm.difficulty,
+      servings: 1,
+      prep_time: 0,
+      difficulty: 'Media',
       ingredients,
     }
     try {
-      if (editingRecipeId) await putJson(`/api/recipes/${editingRecipeId}`, payload)
-      else await postJson('/api/recipes', payload)
-      setCrudMessage(editingRecipeId ? 'Receta actualizada.' : 'Receta añadida.')
+      await postJson('/api/recipes', payload)
+      setCrudMessage('Receta creada.')
       await loadCrudData()
       setShowRecipeForm(false)
       resetRecipeEditor()
@@ -430,31 +535,23 @@ function App() {
     }
   }
 
-  async function removeProduct(product: Product) {
-    setDeleteDialog({ type: 'product', id: product.id, label: product.name })
-  }
-
-  async function removeStore(store: Store) {
-    setDeleteDialog({ type: 'store', id: store.id, label: store.name })
-  }
-
-  async function removeRecipe(recipe: Recipe) {
-    setDeleteDialog({ type: 'recipe', id: recipe.id, label: recipe.title })
+  async function openRecipeDetail(recipeId: string) {
+    setRecipeDetailLoading(true)
+    try {
+      const detail = await fetchJson<RecipeDetail>(`/api/recipes/${recipeId}`)
+      setSelectedRecipeDetail(detail)
+    } catch (err) {
+      setCrudMessage((err as Error).message)
+    } finally {
+      setRecipeDetailLoading(false)
+    }
   }
 
   async function confirmDelete() {
     if (!deleteDialog) return
     try {
-      if (deleteDialog.type === 'product') {
-        await deleteJson(`/api/products/${deleteDialog.id}`)
-        setCrudMessage('Producto eliminado.')
-      } else if (deleteDialog.type === 'store') {
-        await deleteJson(`/api/stores/${deleteDialog.id}`)
-        setCrudMessage('Tienda eliminada.')
-      } else {
-        await deleteJson(`/api/recipes/${deleteDialog.id}`)
-        setCrudMessage('Receta eliminada.')
-      }
+      await deleteJson(`/api/recipes/${deleteDialog.id}`)
+      setCrudMessage('Receta eliminada.')
       await loadCrudData()
     } catch (err) {
       setCrudMessage((err as Error).message)
@@ -463,21 +560,91 @@ function App() {
     }
   }
 
+  async function syncOpenFoodFactsProducts() {
+    const query = externalImportQuery.trim()
+    if (!query) {
+      setExternalImportSummary('Escribe un producto para buscar.')
+      setExternalImportResults([])
+      return
+    }
+    setExternalImportLoading(true)
+    setExternalImportSummary(null)
+    setExternalImportResults([])
+    try {
+      const result = await postJson('/api/open-food-facts/import', {
+        query,
+        page_size: 40,
+      }) as OpenFoodFactsImportResponse
+      setExternalImportSummary(
+        `${result.imported} nuevos, ${result.updated} actualizados y ${result.skipped} descartados por tienda.`,
+      )
+      setExternalImportResults(result.products ?? [])
+      await loadCrudData()
+    } catch (err) {
+      setExternalImportSummary(null)
+      setExternalImportResults([])
+      setCrudMessage((err as Error).message)
+    } finally {
+      setExternalImportLoading(false)
+    }
+  }
+
+  async function submitAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setAuthLoading(true)
+    setAuthMessage(null)
+
+    try {
+      const payload = authMode === 'login'
+        ? { username: authUsername, password: authPassword }
+        : {
+            name: authName,
+            username: authUsername,
+            password: authPassword,
+            confirm_password: authConfirmPassword,
+          }
+      const response = await postJson(
+        authMode === 'login' ? '/api/auth/login' : '/api/auth/register',
+        payload,
+      ) as AuthResponse
+      if (authRememberUsername) {
+        storeRememberedUsername(response.user.handle)
+        setAuthUsername(response.user.handle)
+      } else {
+        storeRememberedUsername(null)
+        setAuthUsername('')
+      }
+      setAuthUser(response.user)
+      setAuthPassword('')
+      setAuthConfirmPassword('')
+      setAuthMessage(null)
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : 'No se pudo iniciar sesión')
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  function switchAuthMode(nextMode: AuthMode) {
+    setAuthMode(nextMode)
+    setAuthMessage(null)
+    setAuthPassword('')
+    setAuthConfirmPassword('')
+  }
+
+  function logout() {
+    setAuthUser(null)
+    setAuthPassword('')
+    setAuthConfirmPassword('')
+    setAuthUsername(authRememberUsername ? readRememberedUsername() : '')
+    setAuthMessage(null)
+    setAuthMode('login')
+  }
+
   const profileMatch = locationRoute.pathname.match(/^\/perfil\/([^/]+)$/)
   const profileUserId = profileMatch ? decodeURIComponent(profileMatch[1]) : null
   const isProfileRoute = profileUserId !== null
-  const apiStatusTone = apiHealthError ? 'status-error' : apiHealthLoading ? 'status-loading' : 'status-granted'
-  const apiStatusLabel = apiHealthError
-    ? `API sin conexion: ${apiHealthError}`
-    : apiHealthLoading
-      ? 'Comprobando API...'
-      : `API lista en ${API_BASE_URL}`
   const feedPosts = useMemo(() => getFeedPosts(feedTab), [feedTab, getFeedPosts])
-  const profileUser = profileUserId ? socialUsersById[profileUserId] ?? null : null
-  const selectedRecipes = useMemo(
-    () => shoppingPlanRecipeIds.map((id) => recipesCrud.find((recipe) => recipe.id === id)).filter((recipe): recipe is Recipe => Boolean(recipe)),
-    [recipesCrud, shoppingPlanRecipeIds],
-  )
   const profilePosts = useMemo(
     () => (profileUserId ? getUserPosts(profileUserId) : []),
     [getUserPosts, profileUserId],
@@ -486,6 +653,15 @@ function App() {
     const allFeedPosts = getFeedPosts('para-ti')
     return allFeedPosts.filter((post) => ['post-lucia-1', 'post-andrea-1', 'post-marcos-1'].includes(post.id))
   }, [getFeedPosts])
+  const effectiveCurrentUser = useMemo(
+    () => authUserToSocialUser(authUser, socialCurrentUser),
+    [authUser, socialCurrentUser],
+  )
+  const effectiveUsersById = useMemo(
+    () => ({ ...socialUsersById, [effectiveCurrentUser.id]: effectiveCurrentUser }),
+    [effectiveCurrentUser, socialUsersById],
+  )
+  const profileUser = profileUserId ? effectiveUsersById[profileUserId] ?? null : null
 
   useEffect(() => {
     if (isProfileRoute && activeSection !== 'perfil') {
@@ -497,61 +673,15 @@ function App() {
     }
   }, [activeSection, isProfileRoute])
 
-  useEffect(() => {
-    setShoppingPlanRecipeIds((current) => current.filter((id) => recipesCrud.some((recipe) => recipe.id === id)))
-  }, [recipesCrud])
-
-  useEffect(() => {
-    if (shoppingPlanRecipeIds.length === 0) {
-      setShoppingPlanData(null)
-      setShoppingPlanLoading(false)
-      return
-    }
-
-    let cancelled = false
-    setShoppingPlanLoading(true)
-
-    postJson('/api/shopping-plan/preview', {
-      recipe_ids: shoppingPlanRecipeIds.map((recipeId) => Number(recipeId)),
-    })
-      .then((data) => {
-        if (cancelled) return
-        setShoppingPlanData(data as ShoppingPlanResponse)
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setShoppingPlanData(null)
-          setCrudMessage(error instanceof Error ? error.message : 'No se pudo preparar la lista de compra')
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setShoppingPlanLoading(false)
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [shoppingPlanRecipeIds])
-
   const openSocialProfile = useCallback((userId: string) => {
     setActiveSection('perfil')
     navigate(`/perfil/${userId}`)
   }, [navigate])
 
-  const toggleRecipeInShoppingPlan = useCallback((recipeId: string) => {
-    setShoppingPlanRecipeIds((current) => (
-      current.includes(recipeId)
-        ? current.filter((id) => id !== recipeId)
-        : [...current, recipeId]
-    ))
-  }, [])
-
   const handleSectionSelect = useCallback((section: typeof activeSection) => {
     if (section === 'perfil') {
       setActiveSection('perfil')
-      navigate(`/perfil/${socialCurrentUser.id}`)
+      navigate(`/perfil/${effectiveCurrentUser.id}`)
       return
     }
 
@@ -568,7 +698,7 @@ function App() {
     if (locationRoute.pathname !== '/') {
       navigate('/')
     }
-  }, [locationRoute.pathname, navigate, socialCurrentUser.id])
+  }, [effectiveCurrentUser.id, locationRoute.pathname, navigate])
 
   const openAccountSection = useCallback((section: AccountSection) => {
     setActiveSection('cuenta')
@@ -590,8 +720,31 @@ function App() {
           ? 'Zona personal para gestionar tu perfil y preferencias'
         : `${labelForSection(activeSection)} en la estructura principal`
 
+  if (!authUser) {
+    return (
+      <AuthScreen
+        mode={authMode}
+        name={authName}
+        username={authUsername}
+        password={authPassword}
+        confirmPassword={authConfirmPassword}
+        rememberUsername={authRememberUsername}
+        message={authMessage}
+        loading={authLoading}
+        themeMode={themeMode}
+        onSubmit={submitAuth}
+        onModeChange={switchAuthMode}
+        onNameChange={setAuthName}
+        onUsernameChange={setAuthUsername}
+        onPasswordChange={setAuthPassword}
+        onConfirmPasswordChange={setAuthConfirmPassword}
+        onRememberUsernameChange={setAuthRememberUsername}
+      />
+    )
+  }
+
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-theme={themeMode}>
       <aside className="left-sidebar card-surface">
         <div className="brand-block">
           <div className="brand-mark">NS</div>
@@ -641,22 +794,6 @@ function App() {
             </div>
           )}
           <p className="muted">{headerDescription}</p>
-          <div className="api-status-card">
-            <div>
-              <p className="eyebrow">Estado del sistema</p>
-              <p className={`status-pill ${apiStatusTone}`}>{apiStatusLabel}</p>
-            </div>
-            <div className="api-status-actions">
-              {apiHealth?.metrics ? (
-                <p className="muted api-status-metrics">
-                  {apiHealth.metrics.users} usuarios · {apiHealth.metrics.products} productos · {apiHealth.metrics.recipes} recetas
-                </p>
-              ) : null}
-              <button type="button" className="ghost-btn" onClick={() => void refreshApiHealth()}>
-                Reintentar
-              </button>
-            </div>
-          </div>
         </header>
         {crudMessage && <section className="panel card-surface"><p className="muted">{crudMessage}</p></section>}
 
@@ -666,8 +803,8 @@ function App() {
               user={profileUser}
               posts={profilePosts}
               commentsByPostId={commentsByPostId}
-              currentUser={socialCurrentUser}
-              usersById={socialUsersById}
+              currentUser={effectiveCurrentUser}
+              usersById={effectiveUsersById}
               isFollowing={followingSet.has(profileUser.id)}
               hasRequest={requestSet.has(profileUser.id)}
               onOpenProfile={openSocialProfile}
@@ -689,21 +826,23 @@ function App() {
             feedTab={feedTab}
             posts={feedPosts}
             commentsByPostId={commentsByPostId}
-            currentUser={socialCurrentUser}
-            usersById={socialUsersById}
+            currentUser={effectiveCurrentUser}
+          usersById={effectiveUsersById}
             onOpenProfile={openSocialProfile}
             onAddComment={addComment}
           />
         ) : activeSection === 'cuenta' ? (
           <SocialAccountPage
-            currentUser={socialCurrentUser}
+            currentUser={effectiveCurrentUser}
             accountSection={accountSection}
             savedPosts={savedPosts}
             commentsByPostId={commentsByPostId}
-            usersById={socialUsersById}
+            usersById={effectiveUsersById}
+            isDarkMode={themeMode === 'dark'}
             onOpenProfile={openSocialProfile}
             onAddComment={addComment}
             onSelectAccountSection={openAccountSection}
+            onToggleDarkMode={(enabled) => setThemeMode(enabled ? 'dark' : 'light')}
           />
         ) : activeSection === 'tiendas-cercanas' ? (
           <>
@@ -756,82 +895,36 @@ function App() {
           </>
         ) : activeSection === 'productos' ? (
           <section className="panel card-surface">
-            <div className="panel-headline">
-              <p className="eyebrow">Productos</p>
-              <h2>Gestion de productos</h2>
-            </div>
-            <button type="button" className="primary-btn" onClick={() => { if (showProductForm) { closeProductForm() } else { setShowProductForm(true) } }}>
-              {showProductForm ? 'Cerrar formulario' : 'Añadir producto'}
-            </button>
-            {showProductForm && !editingProductId && (
-              <form className="crud-form" onSubmit={submitProduct}>
-                <input placeholder="Nombre" value={productForm.name} onChange={(e) => setProductForm((p) => ({ ...p, name: e.target.value }))} required />
-                <input placeholder="Categoria" value={productForm.category} onChange={(e) => setProductForm((p) => ({ ...p, category: e.target.value }))} required />
-                <input placeholder="Marca" value={productForm.brand} onChange={(e) => setProductForm((p) => ({ ...p, brand: e.target.value }))} required />
-                <select value={productForm.storeId} onChange={(e) => setProductForm((p) => ({ ...p, storeId: e.target.value }))} required><option value="">Tienda</option>{storesCrud.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-                <input type="number" min="0.01" step="0.01" placeholder="Cantidad ref" value={productForm.referenceAmount} onChange={(e) => setProductForm((p) => ({ ...p, referenceAmount: e.target.value }))} required />
-                <input placeholder="Unidad" value={productForm.referenceUnit} onChange={(e) => setProductForm((p) => ({ ...p, referenceUnit: e.target.value }))} required />
-                <input type="number" min="0" placeholder="Kcal" value={productForm.calories} onChange={(e) => setProductForm((p) => ({ ...p, calories: e.target.value }))} required />
-                <input type="number" min="0" step="0.01" placeholder="Proteinas" value={productForm.protein} onChange={(e) => setProductForm((p) => ({ ...p, protein: e.target.value }))} required />
-                <input type="number" min="0" step="0.01" placeholder="Carbos" value={productForm.carbs} onChange={(e) => setProductForm((p) => ({ ...p, carbs: e.target.value }))} required />
-                <input type="number" min="0" step="0.01" placeholder="Grasas" value={productForm.fat} onChange={(e) => setProductForm((p) => ({ ...p, fat: e.target.value }))} required />
-                <input type="number" min="0" step="0.01" placeholder="Precio" value={productForm.price} onChange={(e) => setProductForm((p) => ({ ...p, price: e.target.value }))} />
-                <input type="number" min="0" placeholder="Stock" value={productForm.stock} onChange={(e) => setProductForm((p) => ({ ...p, stock: e.target.value }))} />
-                <input className="span-2" placeholder="Imagen URL" value={productForm.imageUrl} onChange={(e) => setProductForm((p) => ({ ...p, imageUrl: e.target.value }))} />
-                <div className="crud-actions span-2">
-                  {editingProductId && (
-                    <>
-                      <button type="button" className="danger-btn" onClick={() => { const current = productsCrud.find((x) => x.id === editingProductId); if (current) void removeProduct(current) }}>Eliminar</button>
-                      <button type="button" className="ghost-btn" onClick={closeProductForm}>Cancelar</button>
-                    </>
-                  )}
-                  <button type="submit" className="primary-btn">{editingProductId ? 'Actualizar' : 'Guardar'}</button>
-                </div>
-              </form>
-            )}
-            {showProductForm && editingProductId && (
-              <div className="edit-sheet" role="dialog" aria-modal="false" aria-labelledby="product-edit-title">
-                <div className="edit-sheet-header">
-                  <div>
-                    <p className="eyebrow">Editar</p>
-                    <h3 id="product-edit-title">Producto</h3>
-                  </div>
-                  <button type="button" className="edit-sheet-close" onClick={closeProductForm} aria-label="Cerrar editor de producto">
-                    ×
-                  </button>
-                </div>
-                <form className="crud-form" onSubmit={submitProduct}>
-                  <input placeholder="Nombre" value={productForm.name} onChange={(e) => setProductForm((p) => ({ ...p, name: e.target.value }))} required />
-                  <input placeholder="Categoria" value={productForm.category} onChange={(e) => setProductForm((p) => ({ ...p, category: e.target.value }))} required />
-                  <input placeholder="Marca" value={productForm.brand} onChange={(e) => setProductForm((p) => ({ ...p, brand: e.target.value }))} required />
-                  <select value={productForm.storeId} onChange={(e) => setProductForm((p) => ({ ...p, storeId: e.target.value }))} required><option value="">Tienda</option>{storesCrud.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-                  <input type="number" min="0.01" step="0.01" placeholder="Cantidad ref" value={productForm.referenceAmount} onChange={(e) => setProductForm((p) => ({ ...p, referenceAmount: e.target.value }))} required />
-                  <input placeholder="Unidad" value={productForm.referenceUnit} onChange={(e) => setProductForm((p) => ({ ...p, referenceUnit: e.target.value }))} required />
-                  <input type="number" min="0" placeholder="Kcal" value={productForm.calories} onChange={(e) => setProductForm((p) => ({ ...p, calories: e.target.value }))} required />
-                  <input type="number" min="0" step="0.01" placeholder="Proteinas" value={productForm.protein} onChange={(e) => setProductForm((p) => ({ ...p, protein: e.target.value }))} required />
-                  <input type="number" min="0" step="0.01" placeholder="Carbos" value={productForm.carbs} onChange={(e) => setProductForm((p) => ({ ...p, carbs: e.target.value }))} required />
-                  <input type="number" min="0" step="0.01" placeholder="Grasas" value={productForm.fat} onChange={(e) => setProductForm((p) => ({ ...p, fat: e.target.value }))} required />
-                  <input type="number" min="0" step="0.01" placeholder="Precio" value={productForm.price} onChange={(e) => setProductForm((p) => ({ ...p, price: e.target.value }))} />
-                  <input type="number" min="0" placeholder="Stock" value={productForm.stock} onChange={(e) => setProductForm((p) => ({ ...p, stock: e.target.value }))} />
-                  <input className="span-2" placeholder="Imagen URL" value={productForm.imageUrl} onChange={(e) => setProductForm((p) => ({ ...p, imageUrl: e.target.value }))} />
-                  <div className="crud-actions span-2">
-                    <button type="button" className="danger-btn" onClick={() => { const current = productsCrud.find((x) => x.id === editingProductId); if (current) void removeProduct(current) }}>Eliminar</button>
-                    <button type="button" className="ghost-btn" onClick={closeProductForm}>Cancelar</button>
-                    <button type="submit" className="primary-btn">Actualizar</button>
-                  </div>
-                </form>
+            <div className="recipes-toolbar">
+              <div className="panel-headline">
+                <p className="eyebrow">Productos</p>
+                <h2>Catálogo de productos cargados</h2>
               </div>
-            )}
+              <button type="button" className="primary-btn" onClick={() => setProductSearchModalOpen(true)}>
+                Buscar más productos
+              </button>
+            </div>
             <div className="crud-list">
-              {productsCrud.map((p) => (
+              {visibleProductsCrud.map((p) => (
                 <article key={p.id} className="crud-item">
-                  <div>
-                    <strong>{p.name}</strong>
-                    <p className="muted">{p.brand} · {storeById.get(p.storeId)?.name ?? 'Sin tienda'}</p>
+                  <div className="catalog-thumb">
+                    <img
+                      src={p.image ?? ''}
+                      alt={p.name}
+                      loading="lazy"
+                      onError={() => {
+                        setBrokenProductImageIds((current) => {
+                          const next = new Set(current)
+                          next.add(p.id)
+                          return next
+                        })
+                      }}
+                    />
                   </div>
-                  <div className="crud-actions">
-                    <button type="button" className="ghost-btn" onClick={() => startEditProduct(p)}>Editar</button>
-                    <button type="button" className="danger-btn" onClick={() => void removeProduct(p)}>Eliminar</button>
+                  <div className="catalog-copy">
+                    <strong>{p.name}</strong>
+                    <p className="muted">{p.brand} · {p.category} · {productStoreLabel(storeById.get(p.storeId))}</p>
+                    <p className="muted">{p.calories} kcal · {p.protein.toFixed(1)} g proteinas · {p.carbs.toFixed(1)} g hidratos · {p.fat.toFixed(1)} g grasas por {p.referenceAmount} {p.referenceUnit}</p>
                   </div>
                 </article>
               ))}
@@ -841,251 +934,58 @@ function App() {
           <section className="panel card-surface">
             <div className="panel-headline">
               <p className="eyebrow">Tiendas</p>
-              <h2>Gestion de tiendas</h2>
+              <h2>Tiendas detectadas</h2>
             </div>
-            <button type="button" className="primary-btn" onClick={() => { if (showStoreForm) { closeStoreForm() } else { setShowStoreForm(true) } }}>
-              {showStoreForm ? 'Cerrar formulario' : 'Añadir tienda'}
-            </button>
-            {showStoreForm && !editingStoreId && (
-              <form className="crud-form" onSubmit={submitStore}>
-                <input placeholder="Nombre" value={storeForm.name} onChange={(e) => setStoreForm((p) => ({ ...p, name: e.target.value }))} required />
-                <input placeholder="Ciudad" value={storeForm.city} onChange={(e) => setStoreForm((p) => ({ ...p, city: e.target.value }))} required />
-                <input placeholder="Logo" value={storeForm.logo} maxLength={2} onChange={(e) => setStoreForm((p) => ({ ...p, logo: e.target.value }))} />
-                <input type="color" value={storeForm.accent} onChange={(e) => setStoreForm((p) => ({ ...p, accent: e.target.value }))} />
-                <input className="span-2" placeholder="Descripcion" value={storeForm.description} onChange={(e) => setStoreForm((p) => ({ ...p, description: e.target.value }))} />
-                <input className="span-2" placeholder="Direccion" value={storeForm.address} onChange={(e) => setStoreForm((p) => ({ ...p, address: e.target.value }))} />
-                <input className="span-2" placeholder="Imagen URL" value={storeForm.imageUrl} onChange={(e) => setStoreForm((p) => ({ ...p, imageUrl: e.target.value }))} />
-                <div className="crud-actions span-2">
-                  {editingStoreId && (
-                    <>
-                      <button type="button" className="danger-btn" onClick={() => { const current = storesCrud.find((x) => x.id === editingStoreId); if (current) void removeStore(current) }}>Eliminar</button>
-                      <button type="button" className="ghost-btn" onClick={closeStoreForm}>Cancelar</button>
-                    </>
-                  )}
-                  <button type="submit" className="primary-btn">{editingStoreId ? 'Actualizar' : 'Guardar'}</button>
-                </div>
-              </form>
-            )}
-            {showStoreForm && editingStoreId && (
-              <div className="edit-sheet" role="dialog" aria-modal="false" aria-labelledby="store-edit-title">
-                <div className="edit-sheet-header">
-                  <div>
-                    <p className="eyebrow">Editar</p>
-                    <h3 id="store-edit-title">Tienda</h3>
-                  </div>
-                  <button type="button" className="edit-sheet-close" onClick={closeStoreForm} aria-label="Cerrar editor de tienda">
-                    ×
-                  </button>
-                </div>
-                <form className="crud-form" onSubmit={submitStore}>
-                  <input placeholder="Nombre" value={storeForm.name} onChange={(e) => setStoreForm((p) => ({ ...p, name: e.target.value }))} required />
-                  <input placeholder="Ciudad" value={storeForm.city} onChange={(e) => setStoreForm((p) => ({ ...p, city: e.target.value }))} required />
-                  <input placeholder="Logo" value={storeForm.logo} maxLength={2} onChange={(e) => setStoreForm((p) => ({ ...p, logo: e.target.value }))} />
-                  <input type="color" value={storeForm.accent} onChange={(e) => setStoreForm((p) => ({ ...p, accent: e.target.value }))} />
-                  <input className="span-2" placeholder="Descripcion" value={storeForm.description} onChange={(e) => setStoreForm((p) => ({ ...p, description: e.target.value }))} />
-                  <input className="span-2" placeholder="Direccion" value={storeForm.address} onChange={(e) => setStoreForm((p) => ({ ...p, address: e.target.value }))} />
-                  <input className="span-2" placeholder="Imagen URL" value={storeForm.imageUrl} onChange={(e) => setStoreForm((p) => ({ ...p, imageUrl: e.target.value }))} />
-                  <div className="crud-actions span-2">
-                    <button type="button" className="danger-btn" onClick={() => { const current = storesCrud.find((x) => x.id === editingStoreId); if (current) void removeStore(current) }}>Eliminar</button>
-                    <button type="button" className="ghost-btn" onClick={closeStoreForm}>Cancelar</button>
-                    <button type="submit" className="primary-btn">Actualizar</button>
-                  </div>
-                </form>
-              </div>
-            )}
             <div className="crud-list">
-              {storesCrud.map((s) => (
-                <article key={s.id} className="crud-item">
-                  <div>
-                    <strong>{s.name}</strong>
-                    <p className="muted">{s.city}</p>
-                  </div>
-                  <div className="crud-actions">
-                    <button type="button" className="ghost-btn" onClick={() => startEditStore(s)}>Editar</button>
-                    <button type="button" className="danger-btn" onClick={() => void removeStore(s)}>Eliminar</button>
-                  </div>
-                </article>
-              ))}
+              {visibleStoresCrud.map((s) => {
+                const logoUrl = storeLogoUrl(s)
+
+                return (
+                  <article key={s.id} className="crud-item">
+                    {logoUrl ? (
+                      <div className="store-mark">
+                        <img className="store-logo-img" src={logoUrl} alt={`Logo de ${normalizeDisplayStoreName(s.name)}`} loading="lazy" />
+                      </div>
+                    ) : null}
+                    <div>
+                      <strong>{normalizeDisplayStoreName(s.name)}</strong>
+                      <p className="muted">{productsCrud.filter((product) => product.storeId === s.id).length} productos como tienda principal</p>
+                    </div>
+                  </article>
+                )
+              })}
             </div>
           </section>
         ) : activeSection === 'recetas' ? (
           <section className="panel card-surface">
-            <div className="panel-headline">
-              <p className="eyebrow">Recetas</p>
-              <h2>Gestion de recetas</h2>
-            </div>
-            <div className="crud-actions">
-              <button type="button" className="ghost-btn" onClick={() => setShoppingPlanRecipeIds([])} disabled={shoppingPlanRecipeIds.length === 0}>
-                Vaciar lista
-              </button>
-              <button type="button" className="primary-btn" onClick={() => { if (showRecipeForm) { closeRecipeForm() } else { setShowRecipeForm(true) } }}>
-                {showRecipeForm ? 'Cerrar formulario' : 'Añadir receta'}
-              </button>
-            </div>
-            <section className="shopping-plan-panel">
-              <div className="shopping-plan-header">
-                <div>
-                  <p className="eyebrow">Planificador</p>
-                  <h3>Lista de compra inteligente</h3>
-                </div>
-                <span className="status-pill">{selectedRecipes.length} recetas seleccionadas</span>
+            <div className="recipes-toolbar">
+              <div className="panel-headline">
+                <p className="eyebrow">Recetas</p>
+                <h2>Gestión de recetas</h2>
               </div>
-              {shoppingPlanLoading ? <p className="muted">Preparando ingredientes y resumen...</p> : null}
-              {selectedRecipes.length === 0 ? (
-                <p className="muted">Marca recetas para agrupar ingredientes, estimar coste y ver en qué tiendas te encaja mejor comprar.</p>
-              ) : (
-                <>
-                  <div className="shopping-plan-metrics">
-                    <article className="shopping-metric-card">
-                      <strong>{shoppingPlanData?.items.length ?? 0}</strong>
-                      <span>ingredientes unificados</span>
-                    </article>
-                    <article className="shopping-metric-card">
-                      <strong>{(shoppingPlanData?.summary.estimated_cost ?? 0).toFixed(2)} EUR</strong>
-                      <span>coste estimado</span>
-                    </article>
-                    <article className="shopping-metric-card">
-                      <strong>{(shoppingPlanData?.summary.calories ?? 0).toFixed(0)} kcal</strong>
-                      <span>energia total</span>
-                    </article>
-                    <article className="shopping-metric-card">
-                      <strong>{(shoppingPlanData?.summary.protein ?? 0).toFixed(1)} g</strong>
-                      <span>proteina acumulada</span>
-                    </article>
-                  </div>
-                  <div className="shopping-plan-grid">
-                    <div className="shopping-plan-column">
-                      <h4>Ingredientes a comprar</h4>
-                      <div className="shopping-ingredient-list">
-                        {shoppingPlanData?.items.map((item) => (
-                          <article key={`${item.product_id}-${item.unit}`} className="shopping-ingredient-card">
-                            <div className="shopping-ingredient-top">
-                              <strong>{item.name}</strong>
-                              <span>{item.quantity.toFixed(2)} {item.unit}</span>
-                            </div>
-                            <p className="muted">{item.brand || item.category}</p>
-                            <p className="muted">Recetas: {item.recipes.join(', ')}</p>
-                            <p className="shopping-price">{item.estimated_cost > 0 ? `${item.estimated_cost.toFixed(2)} EUR aprox.` : 'Sin precio estimado'}</p>
-                          </article>
-                        )) ?? null}
-                      </div>
+              <button type="button" className="primary-btn" onClick={openRecipeForm}>
+                Crear receta
+              </button>
+            </div>
+
+            <div className="recipe-list">
+              {recipesCrud.length === 0 ? (
+                <article className="recipe-empty">
+                  <h3>Aún no hay ninguna receta creada</h3>
+                </article>
+              ) : recipesCrud.map((recipe) => (
+                <article key={recipe.id} className="recipe-list-card">
+                  {recipe.image ? <img src={recipe.image} alt={recipe.title} /> : <div className="recipe-image-placeholder" />}
+                  <button type="button" className="recipe-list-body" onClick={() => void openRecipeDetail(recipe.id)}>
+                    <strong>{recipe.title}</strong>
+                    <p>{recipe.description || 'Sin descripción'}</p>
+                    <div className="recipe-macro-row">
+                      <span>{recipe.caloriesTotal.toFixed(0)} kcal</span>
+                      <span>{recipe.proteinTotal.toFixed(1)} g proteínas</span>
+                      <span>{recipe.carbsTotal.toFixed(1)} g hidratos</span>
+                      <span>{recipe.fatTotal.toFixed(1)} g grasas</span>
                     </div>
-                    <div className="shopping-plan-column">
-                      <h4>Tiendas sugeridas</h4>
-                      <div className="shopping-store-list">
-                        {shoppingPlanData && shoppingPlanData.stores.length > 0 ? shoppingPlanData.stores.map((store) => (
-                          <article key={store.store_id} className="shopping-store-card">
-                            <div className="shopping-ingredient-top">
-                              <strong>{store.store_name || (storeById.get(store.store_id)?.name ?? 'Tienda')}</strong>
-                              <span>{store.items} productos</span>
-                            </div>
-                            <p className="muted">{store.store_city || (storeById.get(store.store_id)?.city ?? 'Ubicacion pendiente')}</p>
-                            <p className="shopping-price">{store.estimated_cost.toFixed(2)} EUR estimados en esta tienda</p>
-                          </article>
-                        )) : <p className="muted">No hay suficientes productos asociados a tiendas para sugerirte una compra agrupada.</p>}
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </section>
-            {showRecipeForm && !editingRecipeId && (
-              <form className="crud-form" onSubmit={submitRecipe}>
-                <input placeholder="Titulo" value={recipeForm.title} onChange={(e) => setRecipeForm((p) => ({ ...p, title: e.target.value }))} required />
-                <select value={recipeForm.userId} onChange={(e) => setRecipeForm((p) => ({ ...p, userId: e.target.value }))} required><option value="">Creador</option>{users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
-                <select value={recipeForm.storeId} onChange={(e) => setRecipeForm((p) => ({ ...p, storeId: e.target.value }))}><option value="">Sin tienda</option>{storesCrud.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-                <select value={recipeForm.difficulty} onChange={(e) => setRecipeForm((p) => ({ ...p, difficulty: e.target.value }))}><option value="Facil">Facil</option><option value="Media">Media</option><option value="Alta">Alta</option></select>
-                <input type="number" min="1" placeholder="Porciones" value={recipeForm.servings} onChange={(e) => setRecipeForm((p) => ({ ...p, servings: e.target.value }))} required />
-                <input type="number" min="0" placeholder="Prep min" value={recipeForm.prepTime} onChange={(e) => setRecipeForm((p) => ({ ...p, prepTime: e.target.value }))} required />
-                <input className="span-2" placeholder="Descripcion" value={recipeForm.description} onChange={(e) => setRecipeForm((p) => ({ ...p, description: e.target.value }))} />
-                <input className="span-2" placeholder="Elaboracion" value={recipeForm.steps} onChange={(e) => setRecipeForm((p) => ({ ...p, steps: e.target.value }))} required />
-                <input className="span-2" placeholder="Imagen URL" value={recipeForm.imageUrl} onChange={(e) => setRecipeForm((p) => ({ ...p, imageUrl: e.target.value }))} />
-                <div className="span-2 crud-list">
-                  {recipeForm.ingredients.map((ing, idx) => (
-                    <div key={`ing-${idx}`} className="crud-form">
-                      <select value={ing.productId} onChange={(e) => setRecipeForm((p) => ({ ...p, ingredients: p.ingredients.map((x, i) => i === idx ? { ...x, productId: e.target.value } : x) }))} required>
-                        <option value="">Producto</option>
-                        {productsCrud.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
-                      <input type="number" min="0.01" step="0.01" value={ing.quantity} onChange={(e) => setRecipeForm((p) => ({ ...p, ingredients: p.ingredients.map((x, i) => i === idx ? { ...x, quantity: e.target.value } : x) }))} required />
-                      <input value={ing.unit} onChange={(e) => setRecipeForm((p) => ({ ...p, ingredients: p.ingredients.map((x, i) => i === idx ? { ...x, unit: e.target.value } : x) }))} required />
-                      <button type="button" className="ghost-btn" onClick={() => setRecipeForm((p) => ({ ...p, ingredients: p.ingredients.length === 1 ? p.ingredients : p.ingredients.filter((_, i) => i !== idx) }))}>Quitar</button>
-                    </div>
-                  ))}
-                  <button type="button" className="ghost-btn" onClick={() => setRecipeForm((p) => ({ ...p, ingredients: [...p.ingredients, { productId: '', quantity: '1', unit: 'g' }] }))}>Añadir ingrediente</button>
-                </div>
-                <div className="crud-actions span-2">
-                  {editingRecipeId && (
-                    <>
-                      <button type="button" className="danger-btn" onClick={() => { const current = recipesCrud.find((x) => x.id === editingRecipeId); if (current) void removeRecipe(current) }}>Eliminar</button>
-                      <button type="button" className="ghost-btn" onClick={closeRecipeForm}>Cancelar</button>
-                    </>
-                  )}
-                  <button type="submit" className="primary-btn">{editingRecipeId ? 'Actualizar' : 'Guardar'}</button>
-                </div>
-              </form>
-            )}
-            {showRecipeForm && editingRecipeId && (
-              <div className="edit-sheet edit-sheet-wide" role="dialog" aria-modal="false" aria-labelledby="recipe-edit-title">
-                <div className="edit-sheet-header">
-                  <div>
-                    <p className="eyebrow">Editar</p>
-                    <h3 id="recipe-edit-title">Receta</h3>
-                  </div>
-                  <button type="button" className="edit-sheet-close" onClick={closeRecipeForm} aria-label="Cerrar editor de receta">
-                    ×
                   </button>
-                </div>
-                <form className="crud-form" onSubmit={submitRecipe}>
-                  <input placeholder="Titulo" value={recipeForm.title} onChange={(e) => setRecipeForm((p) => ({ ...p, title: e.target.value }))} required />
-                  <select value={recipeForm.userId} onChange={(e) => setRecipeForm((p) => ({ ...p, userId: e.target.value }))} required><option value="">Creador</option>{users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
-                  <select value={recipeForm.storeId} onChange={(e) => setRecipeForm((p) => ({ ...p, storeId: e.target.value }))}><option value="">Sin tienda</option>{storesCrud.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-                  <select value={recipeForm.difficulty} onChange={(e) => setRecipeForm((p) => ({ ...p, difficulty: e.target.value }))}><option value="Facil">Facil</option><option value="Media">Media</option><option value="Alta">Alta</option></select>
-                  <input type="number" min="1" placeholder="Porciones" value={recipeForm.servings} onChange={(e) => setRecipeForm((p) => ({ ...p, servings: e.target.value }))} required />
-                  <input type="number" min="0" placeholder="Prep min" value={recipeForm.prepTime} onChange={(e) => setRecipeForm((p) => ({ ...p, prepTime: e.target.value }))} required />
-                  <input className="span-2" placeholder="Descripcion" value={recipeForm.description} onChange={(e) => setRecipeForm((p) => ({ ...p, description: e.target.value }))} />
-                  <input className="span-2" placeholder="Elaboracion" value={recipeForm.steps} onChange={(e) => setRecipeForm((p) => ({ ...p, steps: e.target.value }))} required />
-                  <input className="span-2" placeholder="Imagen URL" value={recipeForm.imageUrl} onChange={(e) => setRecipeForm((p) => ({ ...p, imageUrl: e.target.value }))} />
-                  <div className="span-2 crud-list">
-                    {recipeForm.ingredients.map((ing, idx) => (
-                      <div key={`recipe-edit-ing-${idx}`} className="crud-form">
-                        <select value={ing.productId} onChange={(e) => setRecipeForm((p) => ({ ...p, ingredients: p.ingredients.map((x, i) => i === idx ? { ...x, productId: e.target.value } : x) }))} required>
-                          <option value="">Producto</option>
-                          {productsCrud.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                        <input type="number" min="0.01" step="0.01" value={ing.quantity} onChange={(e) => setRecipeForm((p) => ({ ...p, ingredients: p.ingredients.map((x, i) => i === idx ? { ...x, quantity: e.target.value } : x) }))} required />
-                        <input value={ing.unit} onChange={(e) => setRecipeForm((p) => ({ ...p, ingredients: p.ingredients.map((x, i) => i === idx ? { ...x, unit: e.target.value } : x) }))} required />
-                        <button type="button" className="ghost-btn" onClick={() => setRecipeForm((p) => ({ ...p, ingredients: p.ingredients.length === 1 ? p.ingredients : p.ingredients.filter((_, i) => i !== idx) }))}>Quitar</button>
-                      </div>
-                    ))}
-                    <button type="button" className="ghost-btn" onClick={() => setRecipeForm((p) => ({ ...p, ingredients: [...p.ingredients, { productId: '', quantity: '1', unit: 'g' }] }))}>Añadir ingrediente</button>
-                  </div>
-                  <div className="crud-actions span-2">
-                    <button type="button" className="danger-btn" onClick={() => { const current = recipesCrud.find((x) => x.id === editingRecipeId); if (current) void removeRecipe(current) }}>Eliminar</button>
-                    <button type="button" className="ghost-btn" onClick={closeRecipeForm}>Cancelar</button>
-                    <button type="submit" className="primary-btn">Actualizar</button>
-                  </div>
-                </form>
-              </div>
-            )}
-            <div className="crud-list">
-              {recipesCrud.map((r) => (
-                <article key={r.id} className="crud-item">
-                  <div>
-                    <strong>{r.title}</strong>
-                    <p className="muted">{userById.get(r.userId)?.name ?? 'Sin autor'} · {storeById.get(r.storeId ?? '')?.name ?? 'Sin tienda'}</p>
-                  </div>
-                  <div className="crud-actions">
-                    <button
-                      type="button"
-                      className="ghost-btn"
-                      onClick={() => toggleRecipeInShoppingPlan(r.id)}
-                    >
-                      {shoppingPlanRecipeIds.includes(r.id) ? 'Quitar de compra' : 'Añadir a compra'}
-                    </button>
-                    <button type="button" className="ghost-btn" onClick={() => void startEditRecipe(r.id)}>Editar</button>
-                    <button type="button" className="danger-btn" onClick={() => void removeRecipe(r)}>Eliminar</button>
-                  </div>
                 </article>
               ))}
             </div>
@@ -1103,26 +1003,322 @@ function App() {
 
       <aside className="right-rail">
         <SocialSidebar
-          currentUser={socialCurrentUser}
-          usersById={socialUsersById}
+          currentUser={effectiveCurrentUser}
+            usersById={effectiveUsersById}
           followingUsers={followingUsers}
           followingSet={followingSet}
           onOpenProfile={openSocialProfile}
           onOpenAccountSection={openAccountSection}
           onFollowUser={followUser}
+          onLogout={logout}
         />
       </aside>
+
+      {showRecipeForm && (
+        <div className="modal-backdrop" role="presentation" onClick={closeRecipeForm}>
+          <section className="recipe-modal card-surface" role="dialog" aria-modal="true" aria-labelledby="recipe-modal-title" onClick={(e) => e.stopPropagation()}>
+            <div className="recipe-modal-header">
+              <div>
+                <p className="eyebrow">Nueva receta</p>
+                <h2 id="recipe-modal-title">Crear receta</h2>
+              </div>
+              <button type="button" className="icon-btn" aria-label="Cerrar" onClick={closeRecipeForm}>×</button>
+            </div>
+
+            <form className="recipe-create-form" onSubmit={submitRecipe}>
+              <div className="recipe-form-grid">
+                <label className="recipe-field">
+                  Título de la receta
+                  <input
+                    value={recipeForm.title}
+                    onChange={(event) => setRecipeForm((current) => ({ ...current, title: event.target.value }))}
+                    placeholder="Tostada de jamón cocido"
+                    required
+                  />
+                </label>
+                <label className="recipe-field">
+                  Descripción
+                  <textarea
+                    value={recipeForm.description}
+                    onChange={(event) => setRecipeForm((current) => ({ ...current, description: event.target.value }))}
+                    placeholder="Una descripción corta para reconocer la receta."
+                    rows={3}
+                  />
+                </label>
+                <label className="recipe-field recipe-file-field">
+                  Imagen de la receta
+                  <input type="file" accept="image/*" onChange={(event) => handleRecipeImageFile(event.target.files?.[0] ?? null)} />
+                </label>
+                {recipeForm.imageUrl ? (
+                  <img className="recipe-image-preview" src={recipeForm.imageUrl} alt="Vista previa de la receta" />
+                ) : null}
+              </div>
+
+              <section className="recipe-builder" aria-label="Ingredientes de la receta">
+                <div className="recipe-builder-head">
+                  <div>
+                    <h3>Ingredientes</h3>
+                  </div>
+                  <button type="button" className="secondary-btn" onClick={openIngredientPicker}>
+                    Añadir ingrediente
+                  </button>
+                </div>
+
+                {recipeForm.ingredients.length > 0 ? (
+                  <div className="ingredient-list">
+                    {recipeForm.ingredients.map((ingredient, index) => {
+                      const product = productById.get(ingredient.productId)
+                      const macros = product ? calculateProductMacros(product, n(ingredient.quantity)) : null
+
+                      return (
+                        <article key={`${ingredient.productId}-${index}`} className="ingredient-card">
+                          {product?.image ? <img src={product.image} alt={product.name} /> : <div className="recipe-image-placeholder" />}
+                          <div>
+                            <strong>{product?.name ?? 'Producto eliminado'}</strong>
+                            <span>{n(ingredient.quantity)} g</span>
+                            {macros ? (
+                              <p>{macros.calories.toFixed(0)} kcal · {macros.protein.toFixed(1)} P · {macros.carbs.toFixed(1)} H · {macros.fat.toFixed(1)} G</p>
+                            ) : null}
+                          </div>
+                          <button type="button" className="ghost-btn compact-btn" onClick={() => removeIngredientFromRecipe(index)}>
+                            Quitar
+                          </button>
+                        </article>
+                      )
+                    })}
+                  </div>
+                ) : null}
+
+                {ingredientPickerOpen ? (
+                <div className="ingredient-wizard">
+                  <div className="ingredient-stepper" aria-label="Paso de ingrediente">
+                    <span className={ingredientStep === 'select' ? 'is-active' : ''}>Producto</span>
+                    <span className={ingredientStep === 'amount' ? 'is-active' : ''}>Cantidad</span>
+                  </div>
+
+                  {ingredientStep === 'select' ? (
+                    <>
+                      <div className="ingredient-filter-panel">
+                        <input
+                          aria-label="Buscar producto para receta"
+                          value={ingredientSearch}
+                          onChange={(event) => setIngredientSearch(event.target.value)}
+                          placeholder="Buscar producto"
+                        />
+                        <div className="ingredient-store-strip" aria-label="Filtrar por tienda">
+                          {ingredientStores.map((store) => {
+                            const logoUrl = storeLogoUrl(store)
+                            const selected = ingredientStoreFilters.includes(store.id)
+
+                            return (
+                              <button
+                                type="button"
+                                key={store.id}
+                                className={`ingredient-store-chip ${selected ? 'is-selected' : ''}`}
+                                onClick={() => toggleIngredientStoreFilter(store.id)}
+                              >
+                                {logoUrl ? <img src={logoUrl} alt="" /> : <span>{store.logo}</span>}
+                                {normalizeDisplayStoreName(store.name)}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                      <div className="ingredient-product-list">
+                        {filteredIngredientProducts.map((product) => (
+                          <button
+                            type="button"
+                            key={product.id}
+                            className={`ingredient-product-option ${ingredientProductId === product.id ? 'is-selected' : ''}`}
+                            onClick={() => setIngredientProductId(product.id)}
+                          >
+                            {product.image && !brokenProductImageIds.has(product.id) ? (
+                              <img src={product.image} alt={product.name} onError={() => setBrokenProductImageIds((current) => new Set(current).add(product.id))} />
+                            ) : (
+                              <span className="product-photo-empty" aria-hidden="true" />
+                            )}
+                            <span>
+                              <strong>{product.name}</strong>
+                              <small>{product.brand || storeById.get(product.storeId)?.name || 'Producto'}</small>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      {filteredIngredientProducts.length === 0 ? <p className="muted">No hay productos con esos filtros.</p> : null}
+                      <div className="recipe-modal-actions split-actions">
+                        <button type="button" className="ghost-btn" onClick={closeIngredientPicker}>
+                          Cancelar
+                        </button>
+                        <button type="button" className="secondary-btn" disabled={!ingredientProductId} onClick={() => setIngredientStep('amount')}>
+                          Siguiente
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="ingredient-amount-panel">
+                      {selectedIngredientProduct ? (
+                        <article className="ingredient-selected-card">
+                          {selectedIngredientProduct.image ? <img src={selectedIngredientProduct.image} alt={selectedIngredientProduct.name} /> : <div className="recipe-image-placeholder" />}
+                          <div>
+                            <strong>{selectedIngredientProduct.name}</strong>
+                            <p>{selectedIngredientProduct.brand || storeById.get(selectedIngredientProduct.storeId)?.name || 'Producto seleccionado'}</p>
+                          </div>
+                        </article>
+                      ) : null}
+
+                      <label className="recipe-field">
+                        Gramos utilizados
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={ingredientGrams}
+                          onChange={(event) => setIngredientGrams(event.target.value)}
+                        />
+                      </label>
+
+                      <div className="macro-preview">
+                        <span>{selectedIngredientMacroPreview.calories.toFixed(0)} kcal</span>
+                        <span>{selectedIngredientMacroPreview.protein.toFixed(1)} g proteínas</span>
+                        <span>{selectedIngredientMacroPreview.carbs.toFixed(1)} g hidratos</span>
+                        <span>{selectedIngredientMacroPreview.fat.toFixed(1)} g grasas</span>
+                      </div>
+
+                      <div className="recipe-modal-actions split-actions">
+                        <button type="button" className="ghost-btn" onClick={() => setIngredientStep('select')}>Volver</button>
+                        <button type="button" className="secondary-btn" disabled={!selectedIngredientProduct || n(ingredientGrams) <= 0} onClick={addIngredientToRecipe}>
+                          Agregar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                ) : null}
+              </section>
+
+              {recipeForm.ingredients.length > 0 ? (
+                <label className="recipe-field">
+                  Elaboración
+                  <textarea
+                    value={recipeForm.steps}
+                    onChange={(event) => setRecipeForm((current) => ({ ...current, steps: event.target.value }))}
+                    placeholder="Describe los pasos para preparar la receta."
+                    rows={5}
+                  />
+                </label>
+              ) : null}
+
+              <div className="recipe-modal-actions">
+                <button type="button" className="ghost-btn" onClick={closeRecipeForm}>Cancelar</button>
+                <button type="submit" className="primary-btn">Crear receta</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {(selectedRecipeDetail || recipeDetailLoading) && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setSelectedRecipeDetail(null)}>
+          <section className="recipe-modal recipe-detail-modal card-surface" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            {recipeDetailLoading ? (
+              <p className="muted">Cargando receta...</p>
+            ) : selectedRecipeDetail ? (
+              <>
+                <div className="recipe-modal-header">
+                  <div>
+                    <p className="eyebrow">Receta</p>
+                    <h2>{selectedRecipeDetail.title}</h2>
+                  </div>
+                  <button type="button" className="icon-btn" aria-label="Cerrar" onClick={() => setSelectedRecipeDetail(null)}>×</button>
+                </div>
+                <div className="recipe-detail-hero">
+                  {selectedRecipeDetail.image_url ? <img src={selectedRecipeDetail.image_url} alt={selectedRecipeDetail.title} /> : <div className="recipe-image-placeholder" />}
+                  <div>
+                    <p>{selectedRecipeDetail.description || 'Sin descripción'}</p>
+                    <div className="recipe-macro-row">
+                      <span>{recipesCrud.find((recipe) => recipe.id === String(selectedRecipeDetail.id))?.caloriesTotal.toFixed(0) ?? '0'} kcal</span>
+                      <span>{recipesCrud.find((recipe) => recipe.id === String(selectedRecipeDetail.id))?.proteinTotal.toFixed(1) ?? '0.0'} g proteínas</span>
+                      <span>{recipesCrud.find((recipe) => recipe.id === String(selectedRecipeDetail.id))?.carbsTotal.toFixed(1) ?? '0.0'} g hidratos</span>
+                      <span>{recipesCrud.find((recipe) => recipe.id === String(selectedRecipeDetail.id))?.fatTotal.toFixed(1) ?? '0.0'} g grasas</span>
+                    </div>
+                  </div>
+                </div>
+                {selectedRecipeDetail.steps ? (
+                  <section className="recipe-detail-section">
+                    <h3>Elaboración</h3>
+                    <p>{selectedRecipeDetail.steps}</p>
+                  </section>
+                ) : null}
+                <section className="recipe-detail-section">
+                  <h3>Productos utilizados</h3>
+                  <div className="ingredient-list">
+                    {selectedRecipeDetail.ingredients.map((ingredient) => (
+                      <article key={ingredient.product_id} className="ingredient-card">
+                        {ingredient.image_url ? <img src={ingredient.image_url} alt={ingredient.name} /> : <div className="recipe-image-placeholder" />}
+                        <div>
+                          <strong>{ingredient.name}</strong>
+                          <span>{n(String(ingredient.quantity))} {ingredient.unit}</span>
+                          <p>{ingredient.brand || ingredient.category}</p>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              </>
+            ) : null}
+          </section>
+        </div>
+      )}
+
+      {productSearchModalOpen && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setProductSearchModalOpen(false)}>
+          <section className="product-search-modal card-surface" role="dialog" aria-modal="true" aria-labelledby="product-search-title" onClick={(e) => e.stopPropagation()}>
+            <div className="recipe-modal-header">
+              <div>
+                <p className="eyebrow">Base de datos externa</p>
+                <h2 id="product-search-title">Buscar productos</h2>
+              </div>
+              <button type="button" className="icon-btn" aria-label="Cerrar" onClick={() => setProductSearchModalOpen(false)}>×</button>
+            </div>
+            <div className="external-sync-actions">
+              <input
+                aria-label="Buscar productos en bases de datos externas"
+                placeholder="Yogur, pan, jamón cocido..."
+                value={externalImportQuery}
+                onChange={(event) => setExternalImportQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void syncOpenFoodFactsProducts()
+                }}
+              />
+              <button type="button" className="primary-btn" onClick={() => void syncOpenFoodFactsProducts()} disabled={externalImportLoading}>
+                {externalImportLoading ? 'Buscando...' : 'Buscar'}
+              </button>
+            </div>
+            {externalImportSummary ? <p className="status-pill status-granted">{externalImportSummary}</p> : null}
+            {externalImportResults.length > 0 ? (
+              <div className="external-result-list">
+                {externalImportResults.map((product) => (
+                  <article key={`${product.status}-${product.id}`} className="external-result-card">
+                    {product.image_url ? <img src={product.image_url} alt={product.name} /> : <div className="recipe-image-placeholder" />}
+                    <div>
+                      <strong>{product.name}</strong>
+                      <p>{product.brand} · {product.category} · {product.store}</p>
+                    </div>
+                    <span>{product.status === 'imported' ? 'Nuevo' : 'Actualizado'}</span>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        </div>
+      )}
 
       {deleteDialog && (
         <div className="modal-backdrop" role="presentation" onClick={() => setDeleteDialog(null)}>
           <div className="confirm-modal card-surface" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <h3>Confirmar eliminacion</h3>
             <p>
-              {deleteDialog.type === 'store'
-                ? `¿Seguro que quieres eliminar la tienda "${deleteDialog.label}"?`
-                : deleteDialog.type === 'product'
-                  ? `¿Seguro que quieres eliminar el producto "${deleteDialog.label}"?`
-                  : `¿Seguro que quieres eliminar la receta "${deleteDialog.label}"?`}
+              {`¿Seguro que quieres eliminar la receta "${deleteDialog.label}"?`}
             </p>
             <div className="crud-actions">
               <button type="button" className="ghost-btn" onClick={() => setDeleteDialog(null)}>Cancelar</button>
@@ -1132,6 +1328,133 @@ function App() {
         </div>
       )}
     </div>
+  )
+}
+
+type AuthScreenProps = {
+  mode: AuthMode
+  name: string
+  username: string
+  password: string
+  confirmPassword: string
+  rememberUsername: boolean
+  message: string | null
+  loading: boolean
+  themeMode: ThemeMode
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onModeChange: (mode: AuthMode) => void
+  onNameChange: (value: string) => void
+  onUsernameChange: (value: string) => void
+  onPasswordChange: (value: string) => void
+  onConfirmPasswordChange: (value: string) => void
+  onRememberUsernameChange: (value: boolean) => void
+}
+
+function AuthScreen({
+  mode,
+  name,
+  username,
+  password,
+  confirmPassword,
+  rememberUsername,
+  message,
+  loading,
+  themeMode,
+  onSubmit,
+  onModeChange,
+  onNameChange,
+  onUsernameChange,
+  onPasswordChange,
+  onConfirmPasswordChange,
+  onRememberUsernameChange,
+}: AuthScreenProps) {
+  const isRegister = mode === 'register'
+
+  return (
+    <main className="auth-shell" data-theme={themeMode}>
+      <section className="auth-card" aria-labelledby="auth-title">
+        <div className="auth-brand">
+          <div className="brand-mark">NS</div>
+          <div>
+            <p className="eyebrow">NutriSocial</p>
+            <h1 id="auth-title">{isRegister ? 'Crear cuenta' : 'Iniciar sesión'}</h1>
+          </div>
+        </div>
+
+        <form className="auth-form" onSubmit={onSubmit}>
+          {isRegister ? (
+            <label>
+              Nombre del perfil
+              <input
+                value={name}
+                onChange={(event) => onNameChange(event.target.value)}
+                placeholder="Fernando RM"
+                autoComplete="name"
+                required
+              />
+            </label>
+          ) : null}
+
+          <label>
+            Nombre de usuario
+            <input
+              value={username}
+              onChange={(event) => onUsernameChange(event.target.value)}
+              placeholder="fernandorm"
+              autoComplete="username"
+              required
+            />
+          </label>
+
+          <label>
+            Contraseña
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => onPasswordChange(event.target.value)}
+              autoComplete={isRegister ? 'new-password' : 'current-password'}
+              required
+            />
+          </label>
+
+          {isRegister ? (
+            <label>
+              Confirmar contraseña
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => onConfirmPasswordChange(event.target.value)}
+                autoComplete="new-password"
+                required
+              />
+            </label>
+          ) : null}
+
+          {message ? <p className="auth-message">{message}</p> : null}
+
+          <button type="submit" className="primary-btn" disabled={loading}>
+            {loading ? 'Un momento...' : isRegister ? 'Crear cuenta' : 'Entrar'}
+          </button>
+        </form>
+
+        <label className="auth-remember">
+          <input
+            type="checkbox"
+            checked={rememberUsername}
+            onChange={(event) => onRememberUsernameChange(event.target.checked)}
+          />
+          <span>Guardar nombre de usuario</span>
+        </label>
+
+        <button
+          type="button"
+          className="auth-switch"
+          onClick={() => onModeChange(isRegister ? 'login' : 'register')}
+        >
+          {isRegister ? 'Ya tengo cuenta' : 'No tengo cuenta, crear cuenta'}
+        </button>
+      </section>
+    </main>
   )
 }
 

@@ -7,9 +7,11 @@ type SocialAccountPageProps = {
   savedPosts: SocialPost[]
   commentsByPostId: Record<string, SocialComment[]>
   usersById: Record<string, SocialUser>
+  isDarkMode: boolean
   onOpenProfile: (userId: string) => void
   onAddComment: (postId: string, message: string) => void
   onSelectAccountSection: (section: AccountSection) => void
+  onToggleDarkMode: (enabled: boolean) => void
 }
 
 const sectionMeta: Record<AccountSection, { title: string; description: string }> = {
@@ -44,9 +46,11 @@ export function SocialAccountPage({
   savedPosts,
   commentsByPostId,
   usersById,
+  isDarkMode,
   onOpenProfile,
   onAddComment,
   onSelectAccountSection,
+  onToggleDarkMode,
 }: SocialAccountPageProps) {
   const activeMeta = sectionMeta[accountSection]
 
@@ -197,9 +201,20 @@ export function SocialAccountPage({
             <article className="social-account-preference-row">
               <div>
                 <strong>Apariencia</strong>
-                <p>Modo claro y estilo visual del espacio social.</p>
+                <p>{isDarkMode ? 'Modo oscuro activo en toda la aplicacion.' : 'Modo claro activo en toda la aplicacion.'}</p>
               </div>
-              <span>Personalizar</span>
+              <label className="theme-switch">
+                <input
+                  type="checkbox"
+                  checked={isDarkMode}
+                  onChange={(event) => onToggleDarkMode(event.target.checked)}
+                  aria-label="Activar modo oscuro"
+                />
+                <span className="theme-switch-track" aria-hidden="true">
+                  <span className="theme-switch-thumb" />
+                </span>
+                <span className="theme-switch-label">{isDarkMode ? 'Oscuro' : 'Claro'}</span>
+              </label>
             </article>
             <article className="social-account-preference-row">
               <div>

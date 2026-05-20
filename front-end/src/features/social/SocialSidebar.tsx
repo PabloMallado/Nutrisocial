@@ -12,6 +12,7 @@ type SocialSidebarProps = {
   onOpenProfile: (userId: string) => void
   onOpenAccountSection: (section: AccountSection) => void
   onFollowUser: (userId: string) => void
+  onLogout: () => void
 }
 
 export function SocialSidebar({
@@ -22,6 +23,7 @@ export function SocialSidebar({
   onOpenProfile,
   onOpenAccountSection,
   onFollowUser,
+  onLogout,
 }: SocialSidebarProps) {
   const discoverUsers = useMemo(
     () =>
@@ -36,6 +38,7 @@ export function SocialSidebar({
       <SocialAccountCard
         currentUser={currentUser}
         onOpenAccountSection={onOpenAccountSection}
+        onLogout={onLogout}
       />
 
       <FollowingList
