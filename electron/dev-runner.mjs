@@ -6,7 +6,6 @@ const rendererUrl = 'http://127.0.0.1:5173'
 const apiHealthUrl = 'http://127.0.0.1:4000/api/health'
 const isWindows = process.platform === 'win32'
 const npmCommand = isWindows ? 'npm.cmd' : 'npm'
-const pythonCommand = isWindows ? 'python' : 'python3'
 const children = []
 const projectRoot = fileURLToPath(new URL('../', import.meta.url))
 
@@ -39,6 +38,14 @@ function runProcess(command, args, label, extraEnv = {}) {
   })
 
   return child
+}
+
+function getApiCommand() {
+  if (isWindows) {
+    return { command: 'py', args: ['-m', 'uvicorn'] }
+  }
+
+  return { command: 'python3', args: ['-m', 'uvicorn'] }
 }
 
 async function waitForService(url, label, timeoutMs = 30000) {
@@ -76,9 +83,10 @@ async function main() {
 
   if (!apiWasRunning) {
     console.log('[desktop] arrancando API...')
+    const apiCommand = getApiCommand()
     runProcess(
-      pythonCommand,
-      ['-m', 'uvicorn', 'backend.api.main:app', '--host', '127.0.0.1', '--port', '4000'],
+      apiCommand.command,
+      [...apiCommand.args, 'backend.api.main:app', '--host', '127.0.0.1', '--port', '4000'],
       'api',
     )
   }

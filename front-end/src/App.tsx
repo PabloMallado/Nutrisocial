@@ -36,8 +36,9 @@ type DeleteDialog = { type: 'recipe'; id: string; label: string }
 type ThemeMode = 'light' | 'dark'
 type AuthMode = 'login' | 'register'
 type IngredientStep = 'select' | 'amount'
-type ImportedProductPreview = { id: number; name: string; brand: string; category: string; store: string; image_url: string | null; status: 'imported' | 'updated' }
-type OpenFoodFactsImportResponse = { imported: number; updated: number; skipped: number; storesTouched: number; query: string; products: ImportedProductPreview[] }
+type ExternalProductPreview = { code: string; existing_id: number | null; id?: number; name: string; brand: string; category: string; store: string; image_url: string | null; calories: number; protein: number; carbs: number; fat: number; reference_amount: number; reference_unit: string; status?: 'imported' | 'updated' }
+type OpenFoodFactsSearchResponse = { ok: boolean; query: string; products: ExternalProductPreview[] }
+type OpenFoodFactsImportOneResponse = { ok: boolean; product: ExternalProductPreview & { id: number; status: 'imported' | 'updated' } }
 const allowedStoreTokens = [
   'alcampo',
   'al campo',
@@ -121,6 +122,24 @@ const storeRememberedUsername = (username: string | null) => {
   window.localStorage.setItem('nutrisocial-remembered-username', username)
 }
 
+const savedProductsStorageKey = 'nutrisocial-saved-product-ids'
+
+const readSavedProductIds = () => {
+  if (typeof window === 'undefined') return new Set<string>()
+  try {
+    const rawValue = window.localStorage.getItem(savedProductsStorageKey)
+    const parsed = rawValue ? JSON.parse(rawValue) : []
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : [])
+  } catch {
+    return new Set<string>()
+  }
+}
+
+const storeSavedProductIds = (ids: Set<string>) => {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(savedProductsStorageKey, JSON.stringify([...ids]))
+}
+
 const authUserToSocialUser = (authUser: AuthUser | null, fallbackUser: SocialUser): SocialUser => {
   if (!authUser) return fallbackUser
   return {
@@ -151,7 +170,7 @@ const shouldShowStore = (store: Store) => {
   return store.id !== 'open-food-facts' && allowed && !hiddenStoreNames.has(normalizedName)
 }
 
-const shouldShowProduct = (product: Product, store: Store | undefined) => Boolean(product.image) && (store ? shouldShowStore(store) : false)
+const shouldShowProduct = (product: Product, store: Store | undefined) => Boolean(product.name) && (store ? shouldShowStore(store) || store.id === 'open-food-facts' : false)
 
 const productStoreLabel = (store: Store | undefined) => {
   if (!store || !shouldShowStore(store)) return 'Catálogo base'
@@ -217,7 +236,9 @@ function App() {
   const [externalImportQuery, setExternalImportQuery] = useState('')
   const [externalImportLoading, setExternalImportLoading] = useState(false)
   const [externalImportSummary, setExternalImportSummary] = useState<string | null>(null)
-  const [externalImportResults, setExternalImportResults] = useState<ImportedProductPreview[]>([])
+  const [externalImportResults, setExternalImportResults] = useState<ExternalProductPreview[]>([])
+  const [addingExternalProductCode, setAddingExternalProductCode] = useState<string | null>(null)
+  const [savedProductIds, setSavedProductIds] = useState<Set<string>>(() => readSavedProductIds())
   const [showRecipeForm, setShowRecipeForm] = useState(false)
   const [recipeForm, setRecipeForm] = useState<RecipeForm>(blankRecipeForm())
   const [ingredientPickerOpen, setIngredientPickerOpen] = useState(false)
@@ -397,6 +418,14 @@ function App() {
     () => productsCrud.filter((product) => shouldShowProduct(product, storeById.get(product.storeId)) && !brokenProductImageIds.has(product.id)),
     [brokenProductImageIds, productsCrud, storeById],
   )
+  const savedProducts = useMemo(
+    () => visibleProductsCrud.filter((product) => savedProductIds.has(product.id)),
+    [savedProductIds, visibleProductsCrud],
+  )
+  const discoveryProducts = useMemo(() => {
+    const candidates = visibleProductsCrud.filter((product) => !savedProductIds.has(product.id))
+    return [...candidates].sort(() => Math.random() - 0.5).slice(0, 8)
+  }, [savedProductIds, visibleProductsCrud])
   const ingredientStores = useMemo(
     () => visibleStoresCrud.filter((store) => productsCrud.some((product) => product.storeId === store.id)),
     [productsCrud, visibleStoresCrud],
@@ -560,6 +589,24 @@ function App() {
     }
   }
 
+  function saveProductId(productId: string) {
+    setSavedProductIds((current) => {
+      const next = new Set(current)
+      next.add(productId)
+      storeSavedProductIds(next)
+      return next
+    })
+  }
+
+  function removeSavedProductId(productId: string) {
+    setSavedProductIds((current) => {
+      const next = new Set(current)
+      next.delete(productId)
+      storeSavedProductIds(next)
+      return next
+    })
+  }
+
   async function syncOpenFoodFactsProducts() {
     const query = externalImportQuery.trim()
     if (!query) {
@@ -571,21 +618,51 @@ function App() {
     setExternalImportSummary(null)
     setExternalImportResults([])
     try {
-      const result = await postJson('/api/open-food-facts/import', {
+      const result = await postJson('/api/open-food-facts/search', {
         query,
-        page_size: 40,
-      }) as OpenFoodFactsImportResponse
-      setExternalImportSummary(
-        `${result.imported} nuevos, ${result.updated} actualizados y ${result.skipped} descartados por tienda.`,
-      )
+        page_size: 30,
+      }) as OpenFoodFactsSearchResponse
+      setExternalImportSummary(result.products.length > 0 ? `${result.products.length} productos encontrados. Pulsa Añadir solo en los que quieras guardar.` : 'No se encontraron productos compatibles.')
       setExternalImportResults(result.products ?? [])
-      await loadCrudData()
     } catch (err) {
       setExternalImportSummary(null)
       setExternalImportResults([])
       setCrudMessage((err as Error).message)
     } finally {
       setExternalImportLoading(false)
+    }
+  }
+
+  async function addExternalProduct(product: ExternalProductPreview) {
+    if (product.existing_id) {
+      saveProductId(String(product.existing_id))
+      setExternalImportSummary(`${product.name} añadido a tus productos.`)
+      return
+    }
+
+    const query = externalImportQuery.trim()
+    if (!query) return
+
+    setAddingExternalProductCode(product.code)
+    try {
+      const result = await postJson('/api/open-food-facts/import-one', {
+        query,
+        code: product.code,
+      }) as OpenFoodFactsImportOneResponse
+      saveProductId(String(result.product.id))
+      setExternalImportResults((current) =>
+        current.map((item) =>
+          item.code === product.code
+            ? { ...item, id: result.product.id, existing_id: result.product.id, status: result.product.status }
+            : item,
+        ),
+      )
+      setExternalImportSummary(`${result.product.name} añadido a tus productos.`)
+      await loadCrudData()
+    } catch (err) {
+      setCrudMessage((err as Error).message)
+    } finally {
+      setAddingExternalProductCode(null)
     }
   }
 
@@ -747,7 +824,7 @@ function App() {
     <div className="app-shell" data-theme={themeMode}>
       <aside className="left-sidebar card-surface">
         <div className="brand-block">
-          <div className="brand-mark">NS</div>
+          <img className="brand-mark" src="/app-logo.png" alt="NutriSocial" />
           <strong>NutriSocial</strong>
         </div>
 
@@ -898,36 +975,110 @@ function App() {
             <div className="recipes-toolbar">
               <div className="panel-headline">
                 <p className="eyebrow">Productos</p>
-                <h2>Catálogo de productos cargados</h2>
+                <h2>Tus productos guardados</h2>
               </div>
               <button type="button" className="primary-btn" onClick={() => setProductSearchModalOpen(true)}>
-                Buscar más productos
+                Buscar y añadir
               </button>
             </div>
-            <div className="crud-list">
-              {visibleProductsCrud.map((p) => (
-                <article key={p.id} className="crud-item">
+
+            <div className="product-section-stack">
+              <section className="product-discovery-panel">
+                <div className="section-inline-head">
+                  <div>
+                    <h3>Descubre productos de la base de datos</h3>
+                    <p className="muted">Una muestra aleatoria para empezar. Añade solo los que quieras conservar.</p>
+                  </div>
+                </div>
+                <div className="product-card-grid">
+                  {discoveryProducts.map((p) => (
+                    <article key={p.id} className="product-card">
+                      <div className="catalog-thumb">
+                        {p.image ? (
+                          <img
+                            src={p.image}
+                            alt={p.name}
+                            loading="lazy"
+                            onError={() => {
+                              setBrokenProductImageIds((current) => {
+                                const next = new Set(current)
+                                next.add(p.id)
+                                return next
+                              })
+                            }}
+                          />
+                        ) : <div className="product-photo-empty">{p.name.slice(0, 1).toUpperCase()}</div>}
+                      </div>
+                      <div className="catalog-copy">
+                        <strong>{p.name}</strong>
+                        <p className="muted">{p.brand} · {p.category} · {productStoreLabel(storeById.get(p.storeId))}</p>
+                        <div className="nutrition-grid" aria-label={`Valores nutricionales de ${p.name}`}>
+                          <span><strong>{p.calories}</strong> kcal</span>
+                          <span><strong>{p.protein.toFixed(1)}</strong> g proteínas</span>
+                          <span><strong>{p.carbs.toFixed(1)}</strong> g hidratos</span>
+                          <span><strong>{p.fat.toFixed(1)}</strong> g grasas</span>
+                        </div>
+                        <p className="muted">Por {p.referenceAmount} {p.referenceUnit}</p>
+                      </div>
+                      <button type="button" className="secondary-btn" onClick={() => saveProductId(p.id)}>
+                        Añadir
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section className="product-discovery-panel">
+                <div className="section-inline-head">
+                  <div>
+                    <h3>Mi lista</h3>
+                    <p className="muted">Aquí se quedan los productos que marques como favoritos.</p>
+                  </div>
+                </div>
+                {savedProducts.length === 0 ? (
+                  <article className="recipe-empty">
+                    <h3>Aún no has añadido productos</h3>
+                    <p>Usa la búsqueda o la muestra aleatoria para crear tu lista.</p>
+                  </article>
+                ) : (
+                  <div className="crud-list">
+                    {savedProducts.map((p) => (
+                      <article key={p.id} className="crud-item">
                   <div className="catalog-thumb">
-                    <img
-                      src={p.image ?? ''}
-                      alt={p.name}
-                      loading="lazy"
-                      onError={() => {
-                        setBrokenProductImageIds((current) => {
-                          const next = new Set(current)
-                          next.add(p.id)
-                          return next
-                        })
-                      }}
-                    />
+                    {p.image ? (
+                      <img
+                        src={p.image}
+                        alt={p.name}
+                        loading="lazy"
+                        onError={() => {
+                          setBrokenProductImageIds((current) => {
+                            const next = new Set(current)
+                            next.add(p.id)
+                            return next
+                          })
+                        }}
+                      />
+                    ) : <div className="product-photo-empty">{p.name.slice(0, 1).toUpperCase()}</div>}
                   </div>
                   <div className="catalog-copy">
                     <strong>{p.name}</strong>
                     <p className="muted">{p.brand} · {p.category} · {productStoreLabel(storeById.get(p.storeId))}</p>
-                    <p className="muted">{p.calories} kcal · {p.protein.toFixed(1)} g proteinas · {p.carbs.toFixed(1)} g hidratos · {p.fat.toFixed(1)} g grasas por {p.referenceAmount} {p.referenceUnit}</p>
+                    <div className="nutrition-grid" aria-label={`Valores nutricionales de ${p.name}`}>
+                      <span><strong>{p.calories}</strong> kcal</span>
+                      <span><strong>{p.protein.toFixed(1)}</strong> g proteínas</span>
+                      <span><strong>{p.carbs.toFixed(1)}</strong> g hidratos</span>
+                      <span><strong>{p.fat.toFixed(1)}</strong> g grasas</span>
+                    </div>
+                    <p className="muted">Por {p.referenceAmount} {p.referenceUnit}</p>
                   </div>
-                </article>
-              ))}
+                        <button type="button" className="ghost-btn" onClick={() => removeSavedProductId(p.id)}>
+                          Quitar
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
             </div>
           </section>
         ) : activeSection === 'tiendas' ? (
@@ -1276,7 +1427,7 @@ function App() {
             <div className="recipe-modal-header">
               <div>
                 <p className="eyebrow">Base de datos externa</p>
-                <h2 id="product-search-title">Buscar productos</h2>
+                <h2 id="product-search-title">Buscar productos para añadir</h2>
               </div>
               <button type="button" className="icon-btn" aria-label="Cerrar" onClick={() => setProductSearchModalOpen(false)}>×</button>
             </div>
@@ -1298,13 +1449,31 @@ function App() {
             {externalImportResults.length > 0 ? (
               <div className="external-result-list">
                 {externalImportResults.map((product) => (
-                  <article key={`${product.status}-${product.id}`} className="external-result-card">
+                  <article key={product.code} className="external-result-card">
                     {product.image_url ? <img src={product.image_url} alt={product.name} /> : <div className="recipe-image-placeholder" />}
                     <div>
                       <strong>{product.name}</strong>
                       <p>{product.brand} · {product.category} · {product.store}</p>
+                      <div className="nutrition-grid compact" aria-label={`Valores nutricionales de ${product.name}`}>
+                        <span><strong>{product.calories}</strong> kcal</span>
+                        <span><strong>{Number(product.protein).toFixed(1)}</strong> g proteínas</span>
+                        <span><strong>{Number(product.carbs).toFixed(1)}</strong> g hidratos</span>
+                        <span><strong>{Number(product.fat).toFixed(1)}</strong> g grasas</span>
+                      </div>
+                      <p>Por {product.reference_amount} {product.reference_unit}</p>
                     </div>
-                    <span>{product.status === 'imported' ? 'Nuevo' : 'Actualizado'}</span>
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={() => void addExternalProduct(product)}
+                      disabled={Boolean(product.existing_id && savedProductIds.has(String(product.existing_id))) || addingExternalProductCode === product.code}
+                    >
+                      {addingExternalProductCode === product.code
+                        ? 'Añadiendo...'
+                        : product.existing_id && savedProductIds.has(String(product.existing_id))
+                          ? 'Añadido'
+                          : 'Añadir'}
+                    </button>
                   </article>
                 ))}
               </div>
@@ -1374,7 +1543,7 @@ function AuthScreen({
     <main className="auth-shell" data-theme={themeMode}>
       <section className="auth-card" aria-labelledby="auth-title">
         <div className="auth-brand">
-          <div className="brand-mark">NS</div>
+          <img className="brand-mark" src="/app-logo.png" alt="NutriSocial" />
           <div>
             <p className="eyebrow">NutriSocial</p>
             <h1 id="auth-title">{isRegister ? 'Crear cuenta' : 'Iniciar sesión'}</h1>

@@ -99,11 +99,9 @@
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-weight: 700;
-  background: linear-gradient(145deg, var(--primary), var(--primary-strong));
+  display: block;
+  object-fit: cover;
+  box-shadow: 0 10px 24px rgba(6, 18, 31, 0.18);
 }
 
 .side-nav {
@@ -594,6 +592,20 @@
   object-fit: cover;
 }
 
+.catalog-thumb .product-photo-empty {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--primary-strong);
+  font-weight: 900;
+}
+
+.crud-item .ghost-btn {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
 .store-mark {
   border: 1px solid var(--line);
   background: var(--bg-card-solid);
@@ -852,14 +864,16 @@
 }
 
 .recipe-macro-row,
-.macro-preview {
+.macro-preview,
+.nutrition-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
 }
 
 .recipe-macro-row span,
-.macro-preview span {
+.macro-preview span,
+.nutrition-grid span {
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0.22rem 0.5rem;
@@ -867,6 +881,70 @@
   color: var(--text);
   font-size: 0.8rem;
   font-weight: 700;
+}
+
+.nutrition-grid.compact {
+  margin-top: 0.35rem;
+  gap: 0.3rem;
+}
+
+.nutrition-grid.compact span {
+  font-size: 0.72rem;
+  padding: 0.16rem 0.38rem;
+}
+
+.product-section-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.product-discovery-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.section-inline-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.section-inline-head h3,
+.section-inline-head p {
+  margin: 0;
+}
+
+.product-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.75rem;
+}
+
+.product-card {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: start;
+  gap: 0.72rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: var(--bg-card-solid);
+  padding: 0.62rem;
+}
+
+.product-card .catalog-copy {
+  min-width: 0;
+}
+
+.product-card .secondary-btn {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.product-card .catalog-thumb {
+  width: 72px;
+  height: 72px;
 }
 
 .recipe-modal {
@@ -879,7 +957,7 @@
 }
 
 .product-search-modal {
-  width: min(560px, 100%);
+  width: min(760px, 100%);
   max-height: calc(100vh - 2rem);
   overflow: auto;
   padding: 1rem;
@@ -901,6 +979,11 @@
   border-radius: 0.75rem;
   background: var(--bg-card-solid);
   padding: 0.48rem;
+}
+
+.external-result-card .secondary-btn {
+  align-self: center;
+  white-space: nowrap;
 }
 
 .external-result-card img,
@@ -1333,6 +1416,7 @@
 .app-shell[data-theme='dark'] .suggestion-list,
 .app-shell[data-theme='dark'] .store-card,
 .app-shell[data-theme='dark'] .crud-item,
+.app-shell[data-theme='dark'] .product-card,
 .app-shell[data-theme='dark'] .shopping-metric-card,
 .app-shell[data-theme='dark'] .shopping-ingredient-card,
 .app-shell[data-theme='dark'] .shopping-store-card,

@@ -849,6 +849,113 @@ def ensure_external_store(cursor, name: str) -> str:
     return store_id
 
 
+def open_food_facts_preview(product: dict, existing_id: int | None = None) -> dict:
+    store_names = [canonical_store_name(store_name) for store_name in product["stores"]]
+    store_names = [store_name for store_name in store_names if store_name]
+    return {
+        "code": product["code"],
+        "existing_id": existing_id,
+        "name": product["name"],
+        "brand": product["brand"],
+        "category": product["category"],
+        "store": store_names[0] if store_names else "Catalogo base",
+        "image_url": product["image_url"],
+        "calories": product["calories"],
+        "protein": product["protein"],
+        "carbs": product["carbs"],
+        "fat": product["fat"],
+        "reference_amount": product["reference_amount"],
+        "reference_unit": product["reference_unit"],
+    }
+
+
+def save_open_food_facts_product(cursor, product: dict) -> dict | None:
+    store_names = [canonical_store_name(store_name) for store_name in product["stores"]]
+    store_names = [store_name for store_name in store_names if store_name]
+    if not store_names:
+        return None
+
+    primary_store_id = ensure_external_store(cursor, store_names[0])
+    listing_store_ids = [ensure_external_store(cursor, store_name) for store_name in store_names]
+
+    cursor.execute(
+        "SELECT id FROM products WHERE source_provider = 'open_food_facts' AND external_code = %s LIMIT 1",
+        (product["code"],),
+    )
+    existing = cursor.fetchone()
+
+    if existing:
+        cursor.execute(
+            """
+            UPDATE products
+            SET name = %s, category = %s, brand = %s, store_id = %s, reference_amount = %s,
+                reference_unit = %s, image_url = %s, calories = %s, protein = %s, carbs = %s, fat = %s
+            WHERE id = %s
+            """,
+            (
+                product["name"],
+                product["category"],
+                product["brand"],
+                primary_store_id,
+                product["reference_amount"],
+                product["reference_unit"],
+                product["image_url"],
+                product["calories"],
+                product["protein"],
+                product["carbs"],
+                product["fat"],
+                existing["id"],
+            ),
+        )
+        product_id = existing["id"]
+        status = "updated"
+    else:
+        cursor.execute(
+            """
+            INSERT INTO products
+              (name, category, brand, store_id, reference_amount, reference_unit, image_url,
+               price, stock, calories, protein, carbs, fat, source_provider, external_code)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 0, 0, %s, %s, %s, %s, 'open_food_facts', %s)
+            """,
+            (
+                product["name"],
+                product["category"],
+                product["brand"],
+                primary_store_id,
+                product["reference_amount"],
+                product["reference_unit"],
+                product["image_url"],
+                product["calories"],
+                product["protein"],
+                product["carbs"],
+                product["fat"],
+                product["code"],
+            ),
+        )
+        product_id = cursor.lastrowid
+        status = "imported"
+
+    for store_id in listing_store_ids:
+        cursor.execute(
+            """
+            INSERT INTO product_store_listings
+              (product_id, store_id, price, availability_status, store_product_url, source_provider, last_checked_at)
+            VALUES (%s, %s, NULL, 'unknown', %s, 'open_food_facts', NOW())
+            ON DUPLICATE KEY UPDATE
+              source_provider = VALUES(source_provider),
+              last_checked_at = VALUES(last_checked_at),
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            (product_id, store_id, f"https://world.openfoodfacts.org/product/{product['code']}"),
+        )
+
+    return {
+        **open_food_facts_preview(product, int(product_id)),
+        "id": int(product_id),
+        "status": status,
+    }
+
+
 def import_open_food_facts_products(query: str, page_size: int) -> dict:
     raw_products = fetch_open_food_facts_products(query, page_size)
     normalized_products = [item for item in (normalize_open_food_facts_product(product) for product in raw_products) if item]
@@ -982,6 +1089,73 @@ def import_open_food_facts(payload: dict | None = Body(default=None)) -> dict:
     query = first_text(payload.get("query"), fallback="yogur")
     page_size = min(max(int_or(payload.get("page_size"), 40), 1), 80)
     return import_open_food_facts_products(query, page_size)
+
+
+@app.post("/api/open-food-facts/search")
+def search_open_food_facts(payload: dict | None = Body(default=None)) -> dict:
+    payload = payload or {}
+    query = first_text(payload.get("query"), fallback="")
+    if not query:
+        return {"ok": True, "query": query, "products": []}
+
+    page_size = min(max(int_or(payload.get("page_size"), 30), 1), 50)
+    raw_products = fetch_open_food_facts_products(query, page_size)
+    normalized_products = [
+        item
+        for item in (normalize_open_food_facts_product(product) for product in raw_products)
+        if item and product_matches_query(item, query)
+    ]
+
+    products: list[dict] = []
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            for product in normalized_products:
+                store_names = [canonical_store_name(store_name) for store_name in product["stores"]]
+                store_names = [store_name for store_name in store_names if store_name]
+                if not store_names:
+                    continue
+                cursor.execute(
+                    "SELECT id FROM products WHERE source_provider = 'open_food_facts' AND external_code = %s LIMIT 1",
+                    (product["code"],),
+                )
+                existing = cursor.fetchone()
+                products.append(open_food_facts_preview(product, int(existing["id"]) if existing else None))
+                if len(products) >= 24:
+                    break
+
+    return {"ok": True, "query": query, "products": products}
+
+
+@app.post("/api/open-food-facts/import-one")
+def import_one_open_food_facts(payload: dict | None = Body(default=None)) -> dict:
+    payload = payload or {}
+    query = first_text(payload.get("query"), fallback="")
+    code = first_text(payload.get("code"), fallback="")
+    if not query or not code:
+        raise HTTPException(status_code=400, detail={"message": "Producto no valido para anadir"})
+
+    raw_products = fetch_open_food_facts_products(query, 80)
+    normalized_products = [
+        item
+        for item in (normalize_open_food_facts_product(product) for product in raw_products)
+        if item and product_matches_query(item, query)
+    ]
+    product = next((item for item in normalized_products if item["code"] == code), None)
+    if not product:
+        raise HTTPException(status_code=404, detail={"message": "No se encontro el producto seleccionado"})
+
+    with get_connection(autocommit=False) as conn:
+        try:
+            with conn.cursor() as cursor:
+                saved_product = save_open_food_facts_product(cursor, product)
+                if not saved_product:
+                    raise HTTPException(status_code=400, detail={"message": "El producto no tiene tienda compatible"})
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    return {"ok": True, "product": saved_product}
 
 
 @app.get("/api/products")
