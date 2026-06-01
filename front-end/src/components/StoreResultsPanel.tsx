@@ -7,11 +7,17 @@ interface StoreResultsPanelProps {
   radiusKm: number
   hasSearched: boolean
   prioritizeAvailable: boolean
+  summary: {
+    total: number
+    closestDistanceKm: number
+    cheapestStore: NearbyStoreResult | null
+    bestAvailability: NearbyStoreResult
+  } | null
   onTogglePrioritizeAvailable: () => void
 }
 
 export function StoreResultsPanel(props: StoreResultsPanelProps) {
-  const { loading, errorMessage, stores, radiusKm, hasSearched, prioritizeAvailable, onTogglePrioritizeAvailable } = props
+  const { loading, errorMessage, stores, radiusKm, hasSearched, prioritizeAvailable, summary, onTogglePrioritizeAvailable } = props
 
   return (
     <section className="panel card-surface">
@@ -26,6 +32,27 @@ export function StoreResultsPanel(props: StoreResultsPanelProps) {
       </div>
 
       <p className="muted">Radio activo: {radiusKm} km.</p>
+
+      {summary ? (
+        <div className="store-summary-grid" aria-label="Resumen de resultados">
+          <article className="store-summary-card">
+            <strong>{summary.total}</strong>
+            <span>tiendas encontradas</span>
+          </article>
+          <article className="store-summary-card">
+            <strong>{summary.closestDistanceKm.toFixed(1)} km</strong>
+            <span>opción más cercana</span>
+          </article>
+          <article className="store-summary-card">
+            <strong>{summary.bestAvailability.name}</strong>
+            <span>mejor disponibilidad</span>
+          </article>
+          <article className="store-summary-card">
+            <strong>{summary.cheapestStore ? `${summary.cheapestStore.listing.price?.toFixed(2)} ${summary.cheapestStore.listing.currency}` : 'N/D'}</strong>
+            <span>{summary.cheapestStore ? `mejor precio en ${summary.cheapestStore.name}` : 'precio no disponible'}</span>
+          </article>
+        </div>
+      ) : null}
 
       {loading ? <p className="muted">Buscando tiendas cercanas...</p> : null}
       {errorMessage ? <p className="warning-text">{errorMessage}</p> : null}
@@ -56,11 +83,21 @@ export function StoreResultsPanel(props: StoreResultsPanelProps) {
                 <small className="muted">Actualizado: {new Date(store.listing.last_checked_at).toLocaleString('es-ES')}</small>
               ) : null}
 
-              {store.listing.store_product_url ? (
-                <a className="text-link" href={store.listing.store_product_url} target="_blank" rel="noreferrer">
-                  Ver ficha de tienda
+              <div className="store-link-row">
+                {store.listing.store_product_url ? (
+                  <a className="text-link" href={store.listing.store_product_url} target="_blank" rel="noreferrer">
+                    Ver ficha de tienda
+                  </a>
+                ) : null}
+                <a
+                  className="text-link"
+                  href={`https://www.google.com/maps/search/?api=1&query=${store.latitude},${store.longitude}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Abrir en mapas
                 </a>
-              ) : null}
+              </div>
             </article>
           ))}
         </div>

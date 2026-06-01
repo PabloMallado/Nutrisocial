@@ -37,9 +37,22 @@ type ProductImagePreview = { src: string; alt: string }
 type ThemeMode = 'light' | 'dark'
 type AuthMode = 'login' | 'register'
 type IngredientStep = 'select' | 'amount'
+type ProductSortOption = 'recent' | 'name' | 'protein' | 'calories'
 type ExternalProductPreview = { code: string; existing_id: number | null; id?: number; name: string; brand: string; category: string; store: string; image_url: string | null; calories: number; protein: number; carbs: number; fat: number; reference_amount: number; reference_unit: string; status?: 'imported' | 'updated' }
 type OpenFoodFactsSearchResponse = { ok: boolean; query: string; products: ExternalProductPreview[] }
 type OpenFoodFactsImportOneResponse = { ok: boolean; product: ExternalProductPreview & { id: number; status: 'imported' | 'updated' } }
+type MainSection = 'inicio' | 'productos' | 'tiendas' | 'recetas' | 'perfil' | 'cuenta' | 'tiendas-cercanas'
+type AppPreferences = {
+  activeSection: Exclude<MainSection, 'perfil'>
+  accountSection: AccountSection
+  feedTab: FeedTab
+  radiusKm: number
+  prioritizeAvailable: boolean
+  productSearchTerm: string
+  productSort: ProductSortOption
+  productStoreFilter: string
+  checkedProductIds: string[]
+}
 const allowedStoreTokens = [
   'alcampo',
   'al campo',
@@ -124,6 +137,18 @@ const storeRememberedUsername = (username: string | null) => {
 }
 
 const savedProductsStorageKey = 'nutrisocial-saved-product-ids'
+const appPreferencesStorageKey = 'nutrisocial-app-preferences'
+const defaultAppPreferences: AppPreferences = {
+  activeSection: 'inicio',
+  accountSection: 'overview',
+  feedTab: 'para-ti',
+  radiusKm: 10,
+  prioritizeAvailable: false,
+  productSearchTerm: '',
+  productSort: 'recent',
+  productStoreFilter: 'all',
+  checkedProductIds: [],
+}
 
 const readSavedProductIds = () => {
   if (typeof window === 'undefined') return new Set<string>()
@@ -139,6 +164,35 @@ const readSavedProductIds = () => {
 const storeSavedProductIds = (ids: Set<string>) => {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(savedProductsStorageKey, JSON.stringify([...ids]))
+}
+
+const readAppPreferences = (): AppPreferences => {
+  if (typeof window === 'undefined') return defaultAppPreferences
+  try {
+    const rawValue = window.localStorage.getItem(appPreferencesStorageKey)
+    if (!rawValue) return defaultAppPreferences
+    const parsed = JSON.parse(rawValue) as Partial<AppPreferences>
+    const nextSection = parsed.activeSection ?? defaultAppPreferences.activeSection
+
+    return {
+      activeSection: nextSection,
+      accountSection: parsed.accountSection ?? defaultAppPreferences.accountSection,
+      feedTab: parsed.feedTab ?? defaultAppPreferences.feedTab,
+      radiusKm: typeof parsed.radiusKm === 'number' ? Math.min(50, Math.max(1, parsed.radiusKm)) : defaultAppPreferences.radiusKm,
+      prioritizeAvailable: Boolean(parsed.prioritizeAvailable),
+      productSearchTerm: parsed.productSearchTerm ?? defaultAppPreferences.productSearchTerm,
+      productSort: parsed.productSort ?? defaultAppPreferences.productSort,
+      productStoreFilter: parsed.productStoreFilter ?? defaultAppPreferences.productStoreFilter,
+      checkedProductIds: Array.isArray(parsed.checkedProductIds) ? parsed.checkedProductIds.map(String) : defaultAppPreferences.checkedProductIds,
+    }
+  } catch {
+    return defaultAppPreferences
+  }
+}
+
+const storeAppPreferences = (preferences: AppPreferences) => {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(appPreferencesStorageKey, JSON.stringify(preferences))
 }
 
 const authUserToSocialUser = (authUser: AuthUser | null, fallbackUser: SocialUser): SocialUser => {
@@ -206,6 +260,7 @@ const calculateProductMacros = (product: Product, grams: number) => {
 }
 
 function App() {
+  const preferences = useMemo(readAppPreferences, [])
   const navigate = useNavigate()
   const locationRoute = useLocation()
   const { permission, location, locationLabel, errorMessage: locationError, requestLocation } = useUserLocation()
@@ -216,17 +271,15 @@ function App() {
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
 
-  const [radiusKm, setRadiusKm] = useState(10)
+  const [radiusKm, setRadiusKm] = useState(preferences.radiusKm)
   const [nearbyStores, setNearbyStores] = useState<NearbyStoreResult[]>([])
   const [nearbyLoading, setNearbyLoading] = useState(false)
   const [nearbyError, setNearbyError] = useState<string | null>(null)
   const [hasSearched, setHasSearched] = useState(false)
-  const [prioritizeAvailable, setPrioritizeAvailable] = useState(false)
-  const [activeSection, setActiveSection] = useState<
-    'inicio' | 'productos' | 'tiendas' | 'recetas' | 'perfil' | 'cuenta' | 'tiendas-cercanas'
-  >('inicio')
-  const [accountSection, setAccountSection] = useState<AccountSection>('overview')
-  const [feedTab, setFeedTab] = useState<FeedTab>('para-ti')
+  const [prioritizeAvailable, setPrioritizeAvailable] = useState(preferences.prioritizeAvailable)
+  const [activeSection, setActiveSection] = useState<MainSection>(preferences.activeSection)
+  const [accountSection, setAccountSection] = useState<AccountSection>(preferences.accountSection)
+  const [feedTab, setFeedTab] = useState<FeedTab>(preferences.feedTab)
   const [users, setUsers] = useState<User[]>([])
   const [storesCrud, setStoresCrud] = useState<Store[]>([])
   const [productsCrud, setProductsCrud] = useState<Product[]>([])
@@ -241,6 +294,10 @@ function App() {
   const [externalImportResults, setExternalImportResults] = useState<ExternalProductPreview[]>([])
   const [addingExternalProductCode, setAddingExternalProductCode] = useState<string | null>(null)
   const [savedProductIds, setSavedProductIds] = useState<Set<string>>(() => readSavedProductIds())
+  const [checkedProductIds, setCheckedProductIds] = useState<Set<string>>(() => new Set(preferences.checkedProductIds))
+  const [productSearchTerm, setProductSearchTerm] = useState(preferences.productSearchTerm)
+  const [productSort, setProductSort] = useState<ProductSortOption>(preferences.productSort)
+  const [productStoreFilter, setProductStoreFilter] = useState(preferences.productStoreFilter)
   const [showRecipeForm, setShowRecipeForm] = useState(false)
   const [recipeForm, setRecipeForm] = useState<RecipeForm>(blankRecipeForm())
   const [ingredientPickerOpen, setIngredientPickerOpen] = useState(false)
@@ -296,6 +353,21 @@ function App() {
   useEffect(() => {
     storeAuthUser(authUser)
   }, [authUser])
+
+  useEffect(() => {
+    const nextActiveSection = activeSection === 'perfil' ? 'inicio' : activeSection
+    storeAppPreferences({
+      activeSection: nextActiveSection,
+      accountSection,
+      feedTab,
+      radiusKm,
+      prioritizeAvailable,
+      productSearchTerm,
+      productSort,
+      productStoreFilter,
+      checkedProductIds: [...checkedProductIds],
+    })
+  }, [accountSection, activeSection, checkedProductIds, feedTab, prioritizeAvailable, productSearchTerm, productSort, productStoreFilter, radiusKm])
 
   useEffect(() => {
     setRecipeForm((p) => ({ ...p, userId: p.userId || (authUser ? String(authUser.id) : users[0]?.id || '') }))
@@ -412,6 +484,22 @@ function App() {
       return a.distance_km - b.distance_km
     })
   }, [nearbyStores, prioritizeAvailable])
+  const nearbySummary = useMemo(() => {
+    if (visibleStores.length === 0) return null
+    const cheapestStore = visibleStores
+      .filter((store) => store.listing.price !== null)
+      .sort((a, b) => Number(a.listing.price) - Number(b.listing.price))[0] ?? null
+    const bestAvailability = visibleStores.find((store) => store.listing.availability_status === 'in_stock')
+      ?? visibleStores.find((store) => store.listing.availability_status === 'low_stock')
+      ?? visibleStores[0]
+
+    return {
+      total: visibleStores.length,
+      closestDistanceKm: visibleStores[0]?.distance_km ?? 0,
+      cheapestStore,
+      bestAvailability,
+    }
+  }, [visibleStores])
 
   const storeById = useMemo(() => new Map(storesCrud.map((s) => [s.id, s])), [storesCrud])
   const productById = useMemo(() => new Map(productsCrud.map((product) => [product.id, product])), [productsCrud])
@@ -420,14 +508,54 @@ function App() {
     () => productsCrud.filter((product) => shouldShowProduct(product, storeById.get(product.storeId)) && !brokenProductImageIds.has(product.id)),
     [brokenProductImageIds, productsCrud, storeById],
   )
+  const productStoreOptions = useMemo(
+    () => visibleStoresCrud.filter((store) => visibleProductsCrud.some((product) => product.storeId === store.id)),
+    [visibleProductsCrud, visibleStoresCrud],
+  )
+  const productSearchToken = useMemo(() => normalizeStoreToken(productSearchTerm), [productSearchTerm])
+  const matchesProductFilters = useCallback((product: Product) => {
+    if (productStoreFilter !== 'all' && product.storeId !== productStoreFilter) return false
+    if (!productSearchToken) return true
+    const store = storeById.get(product.storeId)
+    const haystack = normalizeStoreToken(`${product.name} ${product.brand} ${product.category} ${store?.name ?? ''}`)
+    return haystack.includes(productSearchToken)
+  }, [productSearchToken, productStoreFilter, storeById])
+  const sortedVisibleProducts = useMemo(() => {
+    const items = visibleProductsCrud.filter(matchesProductFilters)
+    const sorted = [...items]
+
+    switch (productSort) {
+      case 'name':
+        return sorted.sort((a, b) => a.name.localeCompare(b.name, 'es'))
+      case 'protein':
+        return sorted.sort((a, b) => b.protein - a.protein || a.name.localeCompare(b.name, 'es'))
+      case 'calories':
+        return sorted.sort((a, b) => a.calories - b.calories || a.name.localeCompare(b.name, 'es'))
+      default:
+        return sorted
+    }
+  }, [matchesProductFilters, productSort, visibleProductsCrud])
   const savedProducts = useMemo(
-    () => visibleProductsCrud.filter((product) => savedProductIds.has(product.id)),
-    [savedProductIds, visibleProductsCrud],
+    () => sortedVisibleProducts.filter((product) => savedProductIds.has(product.id)),
+    [savedProductIds, sortedVisibleProducts],
   )
   const discoveryProducts = useMemo(() => {
-    const candidates = visibleProductsCrud.filter((product) => !savedProductIds.has(product.id))
-    return [...candidates].sort(() => Math.random() - 0.5).slice(0, 8)
-  }, [savedProductIds, visibleProductsCrud])
+    const candidates = sortedVisibleProducts.filter((product) => !savedProductIds.has(product.id))
+    if (productSort === 'recent') return [...candidates].sort(() => Math.random() - 0.5).slice(0, 8)
+    return candidates.slice(0, 8)
+  }, [productSort, savedProductIds, sortedVisibleProducts])
+  const checkedSavedProducts = useMemo(
+    () => savedProducts.filter((product) => checkedProductIds.has(product.id)),
+    [checkedProductIds, savedProducts],
+  )
+  const savedProductsTotalCalories = useMemo(
+    () => savedProducts.reduce((total, product) => total + product.calories, 0),
+    [savedProducts],
+  )
+  const savedProductsCoveredStores = useMemo(
+    () => new Set(savedProducts.map((product) => product.storeId)).size,
+    [savedProducts],
+  )
   const ingredientStores = useMemo(
     () => visibleStoresCrud.filter((store) => productsCrud.some((product) => product.storeId === store.id)),
     [productsCrud, visibleStoresCrud],
@@ -607,6 +735,51 @@ function App() {
       storeSavedProductIds(next)
       return next
     })
+    setCheckedProductIds((current) => {
+      const next = new Set(current)
+      next.delete(productId)
+      return next
+    })
+  }
+
+  function toggleCheckedProductId(productId: string) {
+    setCheckedProductIds((current) => {
+      const next = new Set(current)
+      if (next.has(productId)) next.delete(productId)
+      else next.add(productId)
+      return next
+    })
+  }
+
+  function clearCheckedProducts() {
+    setCheckedProductIds((current) => {
+      const next = new Set(current)
+      savedProducts.forEach((product) => next.delete(product.id))
+      return next
+    })
+  }
+
+  async function copySavedProductsSummary() {
+    if (savedProducts.length === 0) {
+      setCrudMessage('Añade productos a tu lista antes de exportarla.')
+      return
+    }
+
+    const lines = [
+      'Lista de compra NutriSocial',
+      ...savedProducts.map((product) => {
+        const store = productStoreLabel(storeById.get(product.storeId))
+        const checkedLabel = checkedProductIds.has(product.id) ? ' [comprado]' : ''
+        return `- ${product.name} · ${product.brand || 'Sin marca'} · ${store}${checkedLabel}`
+      }),
+    ]
+
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'))
+      setCrudMessage('Lista de compra copiada al portapapeles.')
+    } catch {
+      setCrudMessage('No se pudo copiar la lista al portapapeles.')
+    }
   }
 
   async function syncOpenFoodFactsProducts() {
@@ -802,9 +975,10 @@ function App() {
   const renderProductCard = (p: Product, action: 'add' | 'remove') => {
     const storeLabel = productStoreLabel(storeById.get(p.storeId))
     const imageFallback = <div className="product-photo-empty">{p.name.slice(0, 1).toUpperCase()}</div>
+    const isChecked = checkedProductIds.has(p.id)
 
     return (
-      <article key={p.id} className={`product-card ${action === 'remove' ? 'saved-product-card' : ''}`}>
+      <article key={p.id} className={`product-card ${action === 'remove' ? 'saved-product-card' : ''} ${isChecked ? 'is-checked' : ''}`}>
         <div className="catalog-thumb">
           {p.image ? (
             <button
@@ -854,9 +1028,14 @@ function App() {
               Añadir
             </button>
           ) : (
-            <button type="button" className="ghost-btn" onClick={() => removeSavedProductId(p.id)}>
-              Quitar
-            </button>
+            <>
+              <button type="button" className={`ghost-btn ${isChecked ? 'checked-btn' : ''}`} onClick={() => toggleCheckedProductId(p.id)}>
+                {isChecked ? 'Comprado' : 'Marcar'}
+              </button>
+              <button type="button" className="ghost-btn" onClick={() => removeSavedProductId(p.id)}>
+                Quitar
+              </button>
+            </>
           )}
         </div>
       </article>
@@ -1033,6 +1212,7 @@ function App() {
               radiusKm={radiusKm}
               hasSearched={hasSearched}
               prioritizeAvailable={prioritizeAvailable}
+              summary={nearbySummary}
               onTogglePrioritizeAvailable={() => setPrioritizeAvailable((value) => !value)}
             />
           </>
@@ -1049,16 +1229,91 @@ function App() {
             </div>
 
             <div className="product-section-stack">
+              <section className="shopping-plan-panel product-utility-panel">
+                <div className="shopping-plan-header">
+                  <div>
+                    <p className="eyebrow">Lista de compra</p>
+                    <h3>Gestiona y reutiliza tus productos guardados</h3>
+                  </div>
+                  <div className="crud-actions">
+                    <button type="button" className="ghost-btn" onClick={clearCheckedProducts} disabled={checkedSavedProducts.length === 0}>
+                      Limpiar marcados
+                    </button>
+                    <button type="button" className="secondary-btn" onClick={() => void copySavedProductsSummary()}>
+                      Copiar lista
+                    </button>
+                  </div>
+                </div>
+
+                <div className="shopping-plan-metrics">
+                  <article className="shopping-metric-card">
+                    <strong>{savedProducts.length}</strong>
+                    <span>productos visibles</span>
+                  </article>
+                  <article className="shopping-metric-card">
+                    <strong>{checkedSavedProducts.length}</strong>
+                    <span>marcados como comprados</span>
+                  </article>
+                  <article className="shopping-metric-card">
+                    <strong>{savedProductsCoveredStores}</strong>
+                    <span>tiendas implicadas</span>
+                  </article>
+                  <article className="shopping-metric-card">
+                    <strong>{savedProductsTotalCalories.toFixed(0)}</strong>
+                    <span>kcal por referencia</span>
+                  </article>
+                </div>
+
+                <div className="product-filter-grid">
+                  <label className="product-filter-field">
+                    Buscar en tu catálogo
+                    <input
+                      type="search"
+                      value={productSearchTerm}
+                      onChange={(event) => setProductSearchTerm(event.target.value)}
+                      placeholder="Leche, avena, atún, proteína..."
+                    />
+                  </label>
+
+                  <label className="product-filter-field">
+                    Filtrar por tienda
+                    <select value={productStoreFilter} onChange={(event) => setProductStoreFilter(event.target.value)}>
+                      <option value="all">Todas las tiendas</option>
+                      {productStoreOptions.map((store) => (
+                        <option key={store.id} value={store.id}>{normalizeDisplayStoreName(store.name)}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="product-filter-field">
+                    Ordenar por
+                    <select value={productSort} onChange={(event) => setProductSort(event.target.value as ProductSortOption)}>
+                      <option value="recent">Descubrimiento</option>
+                      <option value="name">Nombre</option>
+                      <option value="protein">Más proteína</option>
+                      <option value="calories">Menos calorías</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
+
               <section className="product-discovery-panel">
                 <div className="section-inline-head">
                   <div>
                     <h3>Descubre productos de la base de datos</h3>
-                    <p className="muted">Una muestra aleatoria para empezar. Añade solo los que quieras conservar.</p>
+                    <p className="muted">Una muestra útil según tus filtros. Añade solo los que quieras conservar.</p>
                   </div>
                 </div>
-                <div className="product-card-grid">
-                  {discoveryProducts.map((p) => renderProductCard(p, 'add'))}
-                </div>
+                {discoveryProducts.length === 0 ? (
+                  <article className="recipe-empty">
+                    <h3>No hay productos disponibles con esos filtros</h3>
+                    <p>Ajusta la búsqueda, la tienda o el criterio de ordenación.</p>
+                  </article>
+                ) : (
+                  <div className="product-card-grid">
+                    {discoveryProducts.map((p) => renderProductCard(p, 'add'))}
+                  </div>
+                )}
               </section>
 
               <section className="product-discovery-panel">
@@ -1070,8 +1325,8 @@ function App() {
                 </div>
                 {savedProducts.length === 0 ? (
                   <article className="recipe-empty">
-                    <h3>Aún no has añadido productos</h3>
-                    <p>Usa la búsqueda o la muestra aleatoria para crear tu lista.</p>
+                    <h3>{savedProductIds.size === 0 ? 'Aún no has añadido productos' : 'No hay productos visibles con los filtros actuales'}</h3>
+                    <p>{savedProductIds.size === 0 ? 'Usa la búsqueda o la muestra aleatoria para crear tu lista.' : 'Prueba a limpiar la búsqueda o cambiar la tienda seleccionada.'}</p>
                   </article>
                 ) : (
                   <div className="product-card-grid saved-product-grid">

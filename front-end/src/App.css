@@ -423,6 +423,31 @@
   gap: 0.62rem;
 }
 
+.store-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.62rem;
+}
+
+.store-summary-card {
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--bg-soft);
+  padding: 0.72rem;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.store-summary-card strong {
+  color: var(--primary-strong);
+  font-size: 1rem;
+}
+
+.store-summary-card span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .store-card {
   border: 1px solid #d7e6ee;
   border-radius: 0.9rem;
@@ -485,6 +510,12 @@
   color: var(--primary-strong);
   text-decoration: none;
   font-weight: 600;
+}
+
+.store-link-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .right-rail {
@@ -915,6 +946,35 @@
   gap: 1.25rem;
 }
 
+.product-utility-panel {
+  gap: 1rem;
+}
+
+.product-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.product-filter-field {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.product-filter-field input,
+.product-filter-field select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.78rem;
+  background: var(--bg-input);
+  color: var(--text);
+  padding: 0.55rem 0.68rem;
+  font: inherit;
+}
+
 .product-discovery-panel {
   display: grid;
   gap: 0.75rem;
@@ -961,6 +1021,12 @@
 .product-card:hover {
   border-color: #a9cbd8;
   box-shadow: 0 10px 24px rgba(8, 31, 46, 0.07);
+}
+
+.product-card.is-checked {
+  border-color: color-mix(in srgb, var(--primary) 48%, var(--line));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 8%, #ffffff), #ffffff);
 }
 
 .product-card .catalog-thumb {
@@ -1095,6 +1161,12 @@
   width: 100%;
   min-height: 38px;
   border-radius: 0.68rem;
+}
+
+.checked-btn {
+  border-color: color-mix(in srgb, var(--primary) 50%, var(--line));
+  background: color-mix(in srgb, var(--primary) 14%, var(--bg-card-solid));
+  color: var(--primary-strong);
 }
 
 .product-image-backdrop {
@@ -1638,6 +1710,7 @@
 
 .app-shell[data-theme='dark'] .suggestion-list,
 .app-shell[data-theme='dark'] .store-card,
+.app-shell[data-theme='dark'] .store-summary-card,
 .app-shell[data-theme='dark'] .crud-item,
 .app-shell[data-theme='dark'] .product-card,
 .app-shell[data-theme='dark'] .shopping-metric-card,
@@ -1670,6 +1743,11 @@
 .app-shell[data-theme='dark'] .product-card .catalog-thumb {
   border: 0;
   background: transparent;
+}
+
+.app-shell[data-theme='dark'] .product-card.is-checked {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 18%, var(--bg-card-solid)), var(--bg-card-solid));
 }
 
 .app-shell[data-theme='dark'] .product-image-modal {
@@ -1725,11 +1803,13 @@
   }
 
   .control-grid,
+  .store-summary-grid,
   .store-grid,
   .crud-form,
   .recipe-form-grid,
   .recipe-detail-hero,
   .external-sync-actions,
+  .product-filter-grid,
   .shopping-plan-metrics,
   .shopping-plan-grid {
     grid-template-columns: 1fr;
