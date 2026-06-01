@@ -33,6 +33,7 @@ type ApiBootstrap = {
 type AuthUser = { id: number; name: string; handle: string; avatar_url: string | null }
 type AuthResponse = { ok: boolean; user: AuthUser }
 type DeleteDialog = { type: 'recipe'; id: string; label: string }
+type ProductImagePreview = { src: string; alt: string }
 type ThemeMode = 'light' | 'dark'
 type AuthMode = 'login' | 'register'
 type IngredientStep = 'select' | 'amount'
@@ -230,6 +231,7 @@ function App() {
   const [storesCrud, setStoresCrud] = useState<Store[]>([])
   const [productsCrud, setProductsCrud] = useState<Product[]>([])
   const [brokenProductImageIds, setBrokenProductImageIds] = useState<Set<string>>(() => new Set())
+  const [productImagePreview, setProductImagePreview] = useState<ProductImagePreview | null>(null)
   const [recipesCrud, setRecipesCrud] = useState<Recipe[]>([])
   const [crudMessage, setCrudMessage] = useState<string | null>(null)
   const [productSearchModalOpen, setProductSearchModalOpen] = useState(false)
@@ -797,6 +799,70 @@ function App() {
           ? 'Zona personal para gestionar tu perfil y preferencias'
         : `${labelForSection(activeSection)} en la estructura principal`
 
+  const renderProductCard = (p: Product, action: 'add' | 'remove') => {
+    const storeLabel = productStoreLabel(storeById.get(p.storeId))
+    const imageFallback = <div className="product-photo-empty">{p.name.slice(0, 1).toUpperCase()}</div>
+
+    return (
+      <article key={p.id} className={`product-card ${action === 'remove' ? 'saved-product-card' : ''}`}>
+        <div className="catalog-thumb">
+          {p.image ? (
+            <button
+              type="button"
+              className="product-image-button"
+              aria-label={`Ver imagen grande de ${p.name}`}
+              onClick={() => setProductImagePreview({ src: p.image as string, alt: p.name })}
+            >
+              <img
+                src={p.image}
+                alt={p.name}
+                loading="lazy"
+                onError={() => {
+                  setBrokenProductImageIds((current) => {
+                    const next = new Set(current)
+                    next.add(p.id)
+                    return next
+                  })
+                }}
+              />
+            </button>
+          ) : imageFallback}
+        </div>
+
+        <div className="catalog-copy">
+          <div className="product-title-block">
+            <strong>{p.name}</strong>
+            <p className="product-meta">
+              <span>{p.brand || 'Sin marca'}</span>
+              <span>{storeLabel}</span>
+            </p>
+            <p className="product-category">{p.category || 'Producto de alimentación'}</p>
+          </div>
+
+          <div className="nutrition-grid" aria-label={`Valores nutricionales de ${p.name}`}>
+            <span><strong>{p.calories}</strong><small>kcal</small></span>
+            <span><strong>{p.protein.toFixed(1)}</strong><small>prot.</small></span>
+            <span><strong>{p.carbs.toFixed(1)}</strong><small>hidr.</small></span>
+            <span><strong>{p.fat.toFixed(1)}</strong><small>grasas</small></span>
+          </div>
+        </div>
+
+        <div className="product-card-footer">
+          <span>Por {p.referenceAmount} {p.referenceUnit}</span>
+          {action === 'add' ? (
+            <button type="button" className="secondary-btn" onClick={() => saveProductId(p.id)}>
+              Añadir
+            </button>
+          ) : (
+            <button type="button" className="ghost-btn" onClick={() => removeSavedProductId(p.id)}>
+              Quitar
+            </button>
+          )}
+        </div>
+      </article>
+    )
+  }
+
   if (!authUser) {
     return (
       <AuthScreen
@@ -971,8 +1037,8 @@ function App() {
             />
           </>
         ) : activeSection === 'productos' ? (
-          <section className="panel card-surface">
-            <div className="recipes-toolbar">
+          <section className="panel card-surface product-panel">
+            <div className="recipes-toolbar product-toolbar">
               <div className="panel-headline">
                 <p className="eyebrow">Productos</p>
                 <h2>Tus productos guardados</h2>
@@ -991,40 +1057,7 @@ function App() {
                   </div>
                 </div>
                 <div className="product-card-grid">
-                  {discoveryProducts.map((p) => (
-                    <article key={p.id} className="product-card">
-                      <div className="catalog-thumb">
-                        {p.image ? (
-                          <img
-                            src={p.image}
-                            alt={p.name}
-                            loading="lazy"
-                            onError={() => {
-                              setBrokenProductImageIds((current) => {
-                                const next = new Set(current)
-                                next.add(p.id)
-                                return next
-                              })
-                            }}
-                          />
-                        ) : <div className="product-photo-empty">{p.name.slice(0, 1).toUpperCase()}</div>}
-                      </div>
-                      <div className="catalog-copy">
-                        <strong>{p.name}</strong>
-                        <p className="muted">{p.brand} · {p.category} · {productStoreLabel(storeById.get(p.storeId))}</p>
-                        <div className="nutrition-grid" aria-label={`Valores nutricionales de ${p.name}`}>
-                          <span><strong>{p.calories}</strong> kcal</span>
-                          <span><strong>{p.protein.toFixed(1)}</strong> g proteínas</span>
-                          <span><strong>{p.carbs.toFixed(1)}</strong> g hidratos</span>
-                          <span><strong>{p.fat.toFixed(1)}</strong> g grasas</span>
-                        </div>
-                        <p className="muted">Por {p.referenceAmount} {p.referenceUnit}</p>
-                      </div>
-                      <button type="button" className="secondary-btn" onClick={() => saveProductId(p.id)}>
-                        Añadir
-                      </button>
-                    </article>
-                  ))}
+                  {discoveryProducts.map((p) => renderProductCard(p, 'add'))}
                 </div>
               </section>
 
@@ -1041,41 +1074,8 @@ function App() {
                     <p>Usa la búsqueda o la muestra aleatoria para crear tu lista.</p>
                   </article>
                 ) : (
-                  <div className="crud-list">
-                    {savedProducts.map((p) => (
-                      <article key={p.id} className="crud-item">
-                  <div className="catalog-thumb">
-                    {p.image ? (
-                      <img
-                        src={p.image}
-                        alt={p.name}
-                        loading="lazy"
-                        onError={() => {
-                          setBrokenProductImageIds((current) => {
-                            const next = new Set(current)
-                            next.add(p.id)
-                            return next
-                          })
-                        }}
-                      />
-                    ) : <div className="product-photo-empty">{p.name.slice(0, 1).toUpperCase()}</div>}
-                  </div>
-                  <div className="catalog-copy">
-                    <strong>{p.name}</strong>
-                    <p className="muted">{p.brand} · {p.category} · {productStoreLabel(storeById.get(p.storeId))}</p>
-                    <div className="nutrition-grid" aria-label={`Valores nutricionales de ${p.name}`}>
-                      <span><strong>{p.calories}</strong> kcal</span>
-                      <span><strong>{p.protein.toFixed(1)}</strong> g proteínas</span>
-                      <span><strong>{p.carbs.toFixed(1)}</strong> g hidratos</span>
-                      <span><strong>{p.fat.toFixed(1)}</strong> g grasas</span>
-                    </div>
-                    <p className="muted">Por {p.referenceAmount} {p.referenceUnit}</p>
-                  </div>
-                        <button type="button" className="ghost-btn" onClick={() => removeSavedProductId(p.id)}>
-                          Quitar
-                        </button>
-                      </article>
-                    ))}
+                  <div className="product-card-grid saved-product-grid">
+                    {savedProducts.map((p) => renderProductCard(p, 'remove'))}
                   </div>
                 )}
               </section>
@@ -1478,6 +1478,15 @@ function App() {
                 ))}
               </div>
             ) : null}
+          </section>
+        </div>
+      )}
+
+      {productImagePreview && (
+        <div className="modal-backdrop product-image-backdrop" role="presentation" onClick={() => setProductImagePreview(null)}>
+          <section className="product-image-modal" role="dialog" aria-modal="true" aria-label={productImagePreview.alt} onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="icon-btn product-image-close" aria-label="Cerrar imagen" onClick={() => setProductImagePreview(null)}>×</button>
+            <img src={productImagePreview.src} alt={productImagePreview.alt} />
           </section>
         </div>
       )}
