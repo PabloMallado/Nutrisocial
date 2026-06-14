@@ -36,22 +36,31 @@ export function SocialHome({
 
         {posts.length === 0 ? (
           <article className="social-empty-card">
-            <h3>No hay publicaciones en Siguiendo</h3>
-            <p>Sigue perfiles para ver aqui su actividad.</p>
+            <h3>{feedTab === 'para-ti' ? 'Aun no hay recetas publicadas' : 'No hay publicaciones en Siguiendo'}</h3>
+            <p>
+              {feedTab === 'para-ti'
+                ? 'Cuando creeis recetas desde la aplicacion, apareceran aqui.'
+                : 'Sigue perfiles reales para ver aqui su actividad.'}
+            </p>
           </article>
         ) : (
-          posts.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              author={usersById[post.authorId]}
-              comments={commentsByPostId[post.id] ?? []}
-              currentUser={currentUser}
-              usersById={usersById}
-              onOpenProfile={onOpenProfile}
-              onAddComment={onAddComment}
-            />
-          ))
+          posts.map((post) => {
+            const author = usersById[post.authorId]
+            if (!author) return null
+
+            return (
+              <PostCard
+                key={post.id}
+                post={post}
+                author={author}
+                comments={commentsByPostId[post.id] ?? []}
+                currentUser={currentUser}
+                usersById={usersById}
+                onOpenProfile={onOpenProfile}
+                onAddComment={onAddComment}
+              />
+            )
+          })
         )}
       </section>
     </section>

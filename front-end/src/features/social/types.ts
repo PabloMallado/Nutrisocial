@@ -61,10 +61,7 @@ export type SocialPost = {
 
 export type SocialState = {
   currentUserId: string
-  usersById: Record<string, SocialUser>
-  postsById: Record<string, SocialPost>
   commentsByPostId: Record<string, SocialComment[]>
-  postIds: string[]
   followingIds: string[]
   sentFriendRequestIds: string[]
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { analyzeRecipeHealth } from '../nutrition-analysis'
 import { formatRelativeDate } from '../time'
 import type { SocialComment, SocialPost, SocialUser } from '../types'
 
@@ -23,7 +24,9 @@ export function PostCard({
   onAddComment,
 }: PostCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [showHealthAnalysis, setShowHealthAnalysis] = useState(false)
   const [draftComment, setDraftComment] = useState('')
+  const healthAnalysis = analyzeRecipeHealth(post.recipe)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -82,6 +85,15 @@ export function PostCard({
       <div className="social-post-actions">
         <button type="button">Me gusta</button>
         <button type="button" onClick={() => setIsExpanded(true)}>Comentar</button>
+        <button
+          type="button"
+          onClick={() => {
+            setIsExpanded(true)
+            setShowHealthAnalysis((current) => !current)
+          }}
+        >
+          {showHealthAnalysis ? 'Ocultar salud' : 'Comprobar salud'}
+        </button>
         <button type="button" onClick={() => setIsExpanded((current) => !current)}>
           {isExpanded ? 'Cerrar hilo' : 'Ver receta'}
         </button>
@@ -123,6 +135,64 @@ export function PostCard({
                 <span>grasas</span>
               </article>
             </div>
+
+            {showHealthAnalysis ? (
+              <section className="social-health-panel" aria-label="Analisis nutricional de la receta">
+                <div className="social-health-score">
+                  <strong>{healthAnalysis.score}</strong>
+                  <span>/100</span>
+                </div>
+
+                <div className="social-health-copy">
+                  <div className="social-health-head">
+                    <div>
+                      <p className="social-post-kicker">Nivel de salud</p>
+                      <h5>{healthAnalysis.level}</h5>
+                    </div>
+                    <div className="social-health-tags">
+                      {healthAnalysis.tags.map((tag) => (
+                        <span key={`${post.id}-${tag}`}>{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <p>{healthAnalysis.summary}</p>
+
+                  <div className="social-health-columns">
+                    <div>
+                      <h6>Puntos fuertes</h6>
+                      <ul>
+                        {healthAnalysis.highlights.map((highlight) => (
+                          <li key={`${post.id}-${highlight}`}>{highlight}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {healthAnalysis.warnings.length > 0 ? (
+                      <div>
+                        <h6>A tener en cuenta</h6>
+                        <ul>
+                          {healthAnalysis.warnings.map((warning) => (
+                            <li key={`${post.id}-${warning}`}>{warning}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    {healthAnalysis.suggestions.length > 0 ? (
+                      <div>
+                        <h6>Como mejorarla</h6>
+                        <ul>
+                          {healthAnalysis.suggestions.map((suggestion) => (
+                            <li key={`${post.id}-${suggestion}`}>{suggestion}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </section>
+            ) : null}
 
             <div className="social-recipe-grid">
               <div className="social-recipe-block">

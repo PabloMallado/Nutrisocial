@@ -329,6 +329,116 @@
   text-transform: lowercase;
 }
 
+.social-health-panel {
+  margin-top: 1rem;
+  border: 1px solid #cfe3db;
+  border-radius: 1rem;
+  padding: 0.95rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.9rem;
+  background:
+    radial-gradient(circle at top left, rgba(15, 139, 132, 0.12), transparent 14rem),
+    linear-gradient(180deg, #ffffff, #f4fbf8);
+}
+
+.social-health-score {
+  width: 5rem;
+  height: 5rem;
+  border-radius: 1rem;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.12rem;
+  padding-top: 1.32rem;
+  background: linear-gradient(145deg, #0f8b84, #0d726c);
+  color: #ffffff;
+  box-shadow: 0 12px 20px rgba(15, 139, 132, 0.2);
+}
+
+.social-health-score strong {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.social-health-score span {
+  font-size: 0.82rem;
+  font-weight: 700;
+  opacity: 0.88;
+}
+
+.social-health-copy {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.social-health-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.social-health-head h5 {
+  margin: 0.12rem 0 0;
+  color: #173647;
+  font-size: 1.18rem;
+}
+
+.social-health-copy p {
+  margin: 0;
+  color: #294b5d;
+  line-height: 1.5;
+}
+
+.social-health-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.social-health-tags span {
+  border: 1px solid #b9ddcf;
+  border-radius: 999px;
+  padding: 0.25rem 0.5rem;
+  background: #eaf8f2;
+  color: #0f6248;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.social-health-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.social-health-columns div {
+  border: 1px solid #d7e9e2;
+  border-radius: 0.85rem;
+  padding: 0.72rem;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.social-health-columns h6 {
+  margin: 0 0 0.45rem;
+  color: #1b4357;
+  font-size: 0.9rem;
+}
+
+.social-health-columns ul {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.38rem;
+}
+
+.social-health-columns li {
+  color: #315365;
+  line-height: 1.4;
+}
+
 .social-recipe-grid {
   margin-top: 1rem;
   display: grid;
@@ -1077,6 +1187,8 @@
 .app-shell[data-theme='dark'] .social-recipe-block,
 .app-shell[data-theme='dark'] .social-comment-form,
 .app-shell[data-theme='dark'] .social-comment-card,
+.app-shell[data-theme='dark'] .social-health-panel,
+.app-shell[data-theme='dark'] .social-health-columns div,
 .app-shell[data-theme='dark'] .social-post-meta span,
 .app-shell[data-theme='dark'] .social-recipe-stats article,
 .app-shell[data-theme='dark'] .social-counters div,
@@ -1114,6 +1226,8 @@
 .app-shell[data-theme='dark'] .social-post-copy h3,
 .app-shell[data-theme='dark'] .social-recipe-head h4,
 .app-shell[data-theme='dark'] .social-comments-head h4,
+.app-shell[data-theme='dark'] .social-health-head h5,
+.app-shell[data-theme='dark'] .social-health-columns h6,
 .app-shell[data-theme='dark'] .social-account-copy h3,
 .app-shell[data-theme='dark'] .social-account-page-copy h2,
 .app-shell[data-theme='dark'] .social-account-panel h3,
@@ -1142,6 +1256,8 @@
 .app-shell[data-theme='dark'] .social-post-copy p:last-child,
 .app-shell[data-theme='dark'] .social-recipe-description,
 .app-shell[data-theme='dark'] .social-comment-card p,
+.app-shell[data-theme='dark'] .social-health-copy p,
+.app-shell[data-theme='dark'] .social-health-columns li,
 .app-shell[data-theme='dark'] .social-recipe-subtitle,
 .app-shell[data-theme='dark'] .social-comments-subtitle,
 .app-shell[data-theme='dark'] .social-recipe-list li,
@@ -1175,7 +1291,8 @@
 
 .app-shell[data-theme='dark'] .social-post-meta span,
 .app-shell[data-theme='dark'] .social-recipe-pill,
-.app-shell[data-theme='dark'] .social-comments-count {
+.app-shell[data-theme='dark'] .social-comments-count,
+.app-shell[data-theme='dark'] .social-health-tags span {
   border-color: var(--line-strong);
   background: var(--control-bg);
   color: var(--control-text);
@@ -1225,7 +1342,8 @@
 
 @media (max-width: 920px) {
   .social-account-overview-grid,
-  .social-recipe-grid {
+  .social-recipe-grid,
+  .social-health-columns {
     grid-template-columns: 1fr;
   }
 
@@ -1254,9 +1372,18 @@
   .social-account-preference-row,
   .social-comment-form-actions,
   .social-comments-head,
-  .social-recipe-head {
+  .social-recipe-head,
+  .social-health-head {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .social-health-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .social-health-tags {
+    justify-content: flex-start;
   }
 
   .social-recipe-head h4,

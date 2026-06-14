@@ -1,40 +1,15 @@
 import { useCallback, useMemo, useReducer } from 'react'
-import { CURRENT_USER_ID, mockComments, mockCurrentUser, mockPosts, mockUsers } from './mock-data'
-import type { FeedTab, SocialComment, SocialPost, SocialState, SocialUser } from './types'
+import type { SocialComment, SocialState, SocialUser } from './types'
 
 type Action =
   | { type: 'follow_user'; userId: string }
   | { type: 'send_friend_request'; userId: string }
-  | { type: 'add_comment'; postId: string; message: string }
+  | { type: 'add_comment'; postId: string; authorId: string; message: string }
 
-function sortPostIdsByRecent(posts: SocialPost[]): string[] {
-  return [...posts]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .map((post) => post.id)
-}
-
-function buildInitialState(): SocialState {
-  const usersById = [...mockUsers, mockCurrentUser].reduce<Record<string, SocialUser>>((acc, user) => {
-    acc[user.id] = user
-    return acc
-  }, {})
-
-  const postsById = mockPosts.reduce<Record<string, SocialPost>>((acc, post) => {
-    acc[post.id] = post
-    return acc
-  }, {})
-
-  const commentsByPostId = mockComments.reduce<Record<string, SocialComment[]>>((acc, comment) => {
-    acc[comment.postId] = [...(acc[comment.postId] ?? []), comment]
-    return acc
-  }, {})
-
+function buildInitialState(currentUserId: string): SocialState {
   return {
-    currentUserId: CURRENT_USER_ID,
-    usersById,
-    postsById,
-    commentsByPostId,
-    postIds: sortPostIdsByRecent(mockPosts),
+    currentUserId,
+    commentsByPostId: {},
     followingIds: [],
     sentFriendRequestIds: [],
   }
@@ -47,31 +22,9 @@ function socialReducer(state: SocialState, action: Action): SocialState {
         return state
       }
 
-      const targetUser = state.usersById[action.userId]
-      const currentUser = state.usersById[state.currentUserId]
-
-      if (!targetUser || !currentUser) {
-        return state
-      }
-
       return {
         ...state,
         followingIds: [...state.followingIds, action.userId],
-        usersById: {
-          ...state.usersById,
-          [action.userId]: {
-            ...targetUser,
-            followersCount: targetUser.followersCount + 1,
-            relationshipWithMe: {
-              ...targetUser.relationshipWithMe,
-              followStatus: 'following',
-            },
-          },
-          [state.currentUserId]: {
-            ...currentUser,
-            followingCount: currentUser.followingCount + 1,
-          },
-        },
       }
     }
     case 'send_friend_request': {
@@ -82,38 +35,22 @@ function socialReducer(state: SocialState, action: Action): SocialState {
         return state
       }
 
-      const targetUser = state.usersById[action.userId]
-      if (!targetUser) {
-        return state
-      }
-
       return {
         ...state,
         sentFriendRequestIds: [...state.sentFriendRequestIds, action.userId],
-        usersById: {
-          ...state.usersById,
-          [action.userId]: {
-            ...targetUser,
-            relationshipWithMe: {
-              ...targetUser.relationshipWithMe,
-              friendshipStatus: 'request_sent',
-            },
-          },
-        },
       }
     }
     case 'add_comment': {
-      const post = state.postsById[action.postId]
       const trimmedMessage = action.message.trim()
 
-      if (!post || trimmedMessage.length === 0) {
+      if (trimmedMessage.length === 0) {
         return state
       }
 
       const nextComment: SocialComment = {
         id: `comment-${action.postId}-${Date.now()}`,
         postId: action.postId,
-        authorId: state.currentUserId,
+        authorId: action.authorId,
         message: trimmedMessage,
         createdAt: new Date().toISOString(),
       }
@@ -124,13 +61,6 @@ function socialReducer(state: SocialState, action: Action): SocialState {
           ...state.commentsByPostId,
           [action.postId]: [...(state.commentsByPostId[action.postId] ?? []), nextComment],
         },
-        postsById: {
-          ...state.postsById,
-          [action.postId]: {
-            ...post,
-            interactionsCount: post.interactionsCount + 1,
-          },
-        },
       }
     }
     default:
@@ -138,8 +68,12 @@ function socialReducer(state: SocialState, action: Action): SocialState {
   }
 }
 
-export function useSocialState() {
-  const [state, dispatch] = useReducer(socialReducer, undefined, buildInitialState)
+export function useSocialState(currentUserId: string, usersById: Record<string, SocialUser>) {
+  const [state, dispatch] = useReducer(
+    socialReducer,
+    currentUserId,
+    buildInitialState,
+  )
 
   const followingSet = useMemo(() => new Set(state.followingIds), [state.followingIds])
   const requestSet = useMemo(
@@ -147,19 +81,10 @@ export function useSocialState() {
     [state.sentFriendRequestIds],
   )
 
-  const allPosts = useMemo(() => state.postIds.map((postId) => state.postsById[postId]), [state.postIds, state.postsById])
-
-  const followingPosts = useMemo(
-    () => allPosts.filter((post) => followingSet.has(post.authorId)),
-    [allPosts, followingSet],
-  )
-
   const followingUsers = useMemo(
-    () => state.followingIds.map((userId) => state.usersById[userId]).filter(Boolean),
-    [state.followingIds, state.usersById],
+    () => state.followingIds.map((userId) => usersById[userId]).filter(Boolean),
+    [state.followingIds, usersById],
   )
-
-  const commentsByPostId = useMemo(() => state.commentsByPostId, [state.commentsByPostId])
 
   const followUser = useCallback((userId: string) => {
     dispatch({ type: 'follow_user', userId })
@@ -170,32 +95,16 @@ export function useSocialState() {
   }, [])
 
   const addComment = useCallback((postId: string, message: string) => {
-    dispatch({ type: 'add_comment', postId, message })
-  }, [])
-
-  const getFeedPosts = useCallback(
-    (feedTab: FeedTab) => (feedTab === 'para-ti' ? allPosts : followingPosts),
-    [allPosts, followingPosts],
-  )
-
-  const getUserPosts = useCallback(
-    (userId: string) => allPosts.filter((post) => post.authorId === userId),
-    [allPosts],
-  )
+    dispatch({ type: 'add_comment', postId, authorId: currentUserId, message })
+  }, [currentUserId])
 
   return {
-    currentUser: state.usersById[state.currentUserId],
-    usersById: state.usersById,
-    allPosts,
-    commentsByPostId,
-    followingPosts,
+    commentsByPostId: state.commentsByPostId,
     followingUsers,
     followingSet,
     requestSet,
     followUser,
     sendFriendRequest,
     addComment,
-    getFeedPosts,
-    getUserPosts,
   }
 }

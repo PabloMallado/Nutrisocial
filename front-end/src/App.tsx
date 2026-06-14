@@ -13,22 +13,22 @@ import { useSocialState } from './features/social/use-social-state'
 import { useUserLocation } from './hooks/use-user-location'
 import { apiRequest } from './services/http'
 import { getNearbyStores, searchProducts } from './services/location-shopping-api'
-import type { AccountSection, FeedTab, SocialUser } from './features/social/types'
+import type { AccountSection, FeedTab, SocialPost, SocialUser } from './features/social/types'
 import type { NearbyStoreResult, ProductSuggestion } from './types/location-shopping'
 
 
-type User = { id: string; name: string; handle: string }
+type User = { id: string; name: string; handle: string; bio: string; avatarUrl: string | null }
 type Store = { id: string; name: string; description: string; address: string; city: string; logo: string; accent: string; image: string | null }
 type Product = { id: string; name: string; category: string; brand: string; storeId: string; referenceAmount: number; referenceUnit: string; image: string | null; price: number; stock: number; calories: number; protein: number; carbs: number; fat: number }
-type Recipe = { id: string; userId: string; storeId: string | null; title: string; description: string; steps: string; image: string | null; servings: number; prepTime: number; difficulty: string; caloriesTotal: number; proteinTotal: number; carbsTotal: number; fatTotal: number }
+type Recipe = { id: string; userId: string; storeId: string | null; title: string; description: string; steps: string; image: string | null; servings: number; prepTime: number; difficulty: string; caloriesTotal: number; proteinTotal: number; carbsTotal: number; fatTotal: number; createdAt: string }
 type RecipeForm = { title: string; description: string; steps: string; userId: string; storeId: string; difficulty: string; servings: string; prepTime: string; imageUrl: string; ingredients: Array<{ productId: string; quantity: string; unit: string }> }
 type RecipeIngredientDetail = { product_id: number; name: string; brand: string; category: string; image_url: string | null; calories: number; protein: number | string; carbs: number | string; fat: number | string; reference_amount: number | string; reference_unit: string; quantity: number | string; unit: string }
 type RecipeDetail = { id: number; user_id: number; store_id: string | null; title: string; description: string | null; steps: string | null; image_url: string | null; servings: number; prep_time: number; difficulty: string; ingredients: RecipeIngredientDetail[] }
 type ApiBootstrap = {
-  users: Array<{ id: number; name: string; handle: string }>
+  users: Array<{ id: number; name: string; handle: string; bio: string | null; avatar_url: string | null }>
   stores: Array<{ id: string; name: string; description: string | null; address: string | null; city: string; logo: string; accent: string; image_url: string | null }>
   products: Array<{ id: number; name: string; category: string; brand: string; store_id: string; reference_amount: number | string; reference_unit: string; image_url: string | null; price: number | string; stock: number; calories: number; protein: number | string; carbs: number | string; fat: number | string }>
-  recipes: Array<{ id: number; user_id: number; store_id: string | null; title: string; description: string | null; steps: string | null; image_url: string | null; servings: number; prep_time: number; difficulty: string; calories_total: number | string; protein_total: number | string; carbs_total: number | string; fat_total: number | string }>
+  recipes: Array<{ id: number; user_id: number; store_id: string | null; title: string; description: string | null; steps: string | null; image_url: string | null; servings: number; prep_time: number; difficulty: string; calories_total: number | string; protein_total: number | string; carbs_total: number | string; fat_total: number | string; created_at: string }>
 }
 type AuthUser = { id: number; name: string; handle: string; avatar_url: string | null }
 type AuthResponse = { ok: boolean; user: AuthUser }
@@ -195,16 +195,64 @@ const storeAppPreferences = (preferences: AppPreferences) => {
   window.localStorage.setItem(appPreferencesStorageKey, JSON.stringify(preferences))
 }
 
-const authUserToSocialUser = (authUser: AuthUser | null, fallbackUser: SocialUser): SocialUser => {
-  if (!authUser) return fallbackUser
+const socialUserId = (userId: string | number) => `user-${userId}`
+const defaultAvatarUrl = '/app-logo.png'
+
+const userToSocialUser = (user: User): SocialUser => ({
+  id: socialUserId(user.id),
+  username: user.handle,
+  displayName: user.name,
+  avatarUrl: user.avatarUrl || defaultAvatarUrl,
+  bio: user.bio || 'Perfil de NutriSocial.',
+  followersCount: 0,
+  followingCount: 0,
+  relationshipWithMe: {
+    followStatus: 'not_following',
+    friendshipStatus: 'none',
+  },
+})
+
+const authUserToSocialUser = (authUser: AuthUser): SocialUser => {
   return {
-    ...fallbackUser,
-    id: `auth-${authUser.id}`,
+    id: socialUserId(authUser.id),
     displayName: authUser.name,
     username: authUser.handle,
-    avatarUrl: authUser.avatar_url || fallbackUser.avatarUrl,
+    avatarUrl: authUser.avatar_url || defaultAvatarUrl,
+    bio: 'Perfil de NutriSocial.',
+    followersCount: 0,
+    followingCount: 0,
+    relationshipWithMe: {
+      followStatus: 'following',
+      friendshipStatus: 'friends',
+    },
   }
 }
+
+const recipeToSocialPost = (recipe: Recipe): SocialPost => ({
+  id: `recipe-${recipe.id}`,
+  authorId: socialUserId(recipe.userId),
+  imageUrl: recipe.image || defaultAvatarUrl,
+  title: recipe.title,
+  caption: recipe.description || 'Receta publicada en NutriSocial.',
+  createdAt: recipe.createdAt,
+  likesCount: 0,
+  interactionsCount: 0,
+  recipe: {
+    title: recipe.title,
+    description: recipe.description || 'Sin descripcion',
+    difficulty: recipe.difficulty,
+    prepTimeMinutes: recipe.prepTime,
+    servings: recipe.servings,
+    calories: Math.round(recipe.caloriesTotal),
+    protein: Number(recipe.proteinTotal.toFixed(1)),
+    carbs: Number(recipe.carbsTotal.toFixed(1)),
+    fat: Number(recipe.fatTotal.toFixed(1)),
+    ingredients: [],
+    steps: recipe.steps
+      ? recipe.steps.split(/\r?\n|\. /).map((step) => step.trim()).filter(Boolean)
+      : ['Sin pasos detallados.'],
+  },
+})
 
 const normalizeDisplayStoreName = (name: string) => {
   const normalized = name.trim().toLowerCase()
@@ -319,9 +367,29 @@ function App() {
   const [authRememberUsername, setAuthRememberUsername] = useState(() => readRememberedUsername().length > 0)
   const [authMessage, setAuthMessage] = useState<string | null>(null)
   const [authLoading, setAuthLoading] = useState(false)
+  const effectiveCurrentUser = useMemo(
+    () => authUserToSocialUser(authUser ?? { id: 0, name: 'Usuario', handle: 'usuario', avatar_url: null }),
+    [authUser],
+  )
+  const effectiveUsersById = useMemo(() => {
+    const nextUsers = users.reduce<Record<string, SocialUser>>((acc, user) => {
+      const socialUser = userToSocialUser(user)
+      acc[socialUser.id] = socialUser
+      return acc
+    }, {})
+
+    nextUsers[effectiveCurrentUser.id] = {
+      ...(nextUsers[effectiveCurrentUser.id] ?? effectiveCurrentUser),
+      ...effectiveCurrentUser,
+    }
+
+    return nextUsers
+  }, [effectiveCurrentUser, users])
+  const socialPosts = useMemo(
+    () => recipesCrud.map(recipeToSocialPost),
+    [recipesCrud],
+  )
   const {
-    currentUser: socialCurrentUser,
-    usersById: socialUsersById,
     commentsByPostId,
     followingUsers,
     followingSet,
@@ -329,16 +397,14 @@ function App() {
     followUser,
     sendFriendRequest,
     addComment,
-    getFeedPosts,
-    getUserPosts,
-  } = useSocialState()
+  } = useSocialState(effectiveCurrentUser.id, effectiveUsersById)
 
   const loadCrudData = useCallback(async () => {
     const data = await fetchJson<ApiBootstrap>('/api/bootstrap')
-    setUsers(data.users.map((u) => ({ id: String(u.id), name: u.name, handle: u.handle })))
+    setUsers(data.users.map((u) => ({ id: String(u.id), name: u.name, handle: u.handle, bio: u.bio ?? '', avatarUrl: u.avatar_url })))
     setStoresCrud(data.stores.map((s) => ({ id: s.id, name: s.name, description: s.description ?? '', address: s.address ?? '', city: s.city, logo: s.logo, accent: s.accent, image: s.image_url })))
     setProductsCrud(data.products.map((p) => ({ id: String(p.id), name: p.name, category: p.category, brand: p.brand, storeId: p.store_id, referenceAmount: Number(p.reference_amount ?? 100), referenceUnit: p.reference_unit || 'g', image: p.image_url, price: Number(p.price ?? 0), stock: Number(p.stock ?? 0), calories: Number(p.calories ?? 0), protein: Number(p.protein ?? 0), carbs: Number(p.carbs ?? 0), fat: Number(p.fat ?? 0) })))
-    setRecipesCrud(data.recipes.map((r) => ({ id: String(r.id), userId: String(r.user_id), storeId: r.store_id, title: r.title, description: r.description ?? '', steps: r.steps ?? '', image: r.image_url, servings: Number(r.servings ?? 1), prepTime: Number(r.prep_time ?? 0), difficulty: r.difficulty, caloriesTotal: Number(r.calories_total ?? 0), proteinTotal: Number(r.protein_total ?? 0), carbsTotal: Number(r.carbs_total ?? 0), fatTotal: Number(r.fat_total ?? 0) })))
+    setRecipesCrud(data.recipes.map((r) => ({ id: String(r.id), userId: String(r.user_id), storeId: r.store_id, title: r.title, description: r.description ?? '', steps: r.steps ?? '', image: r.image_url, servings: Number(r.servings ?? 1), prepTime: Number(r.prep_time ?? 0), difficulty: r.difficulty, caloriesTotal: Number(r.calories_total ?? 0), proteinTotal: Number(r.protein_total ?? 0), carbsTotal: Number(r.carbs_total ?? 0), fatTotal: Number(r.fat_total ?? 0), createdAt: r.created_at })))
   }, [])
 
   useEffect(() => {
@@ -896,23 +962,17 @@ function App() {
   const profileMatch = locationRoute.pathname.match(/^\/perfil\/([^/]+)$/)
   const profileUserId = profileMatch ? decodeURIComponent(profileMatch[1]) : null
   const isProfileRoute = profileUserId !== null
-  const feedPosts = useMemo(() => getFeedPosts(feedTab), [feedTab, getFeedPosts])
+  const feedPosts = useMemo(
+    () => feedTab === 'para-ti'
+      ? socialPosts
+      : socialPosts.filter((post) => followingSet.has(post.authorId)),
+    [feedTab, followingSet, socialPosts],
+  )
   const profilePosts = useMemo(
-    () => (profileUserId ? getUserPosts(profileUserId) : []),
-    [getUserPosts, profileUserId],
+    () => (profileUserId ? socialPosts.filter((post) => post.authorId === profileUserId) : []),
+    [profileUserId, socialPosts],
   )
-  const savedPosts = useMemo(() => {
-    const allFeedPosts = getFeedPosts('para-ti')
-    return allFeedPosts.filter((post) => ['post-lucia-1', 'post-andrea-1', 'post-marcos-1'].includes(post.id))
-  }, [getFeedPosts])
-  const effectiveCurrentUser = useMemo(
-    () => authUserToSocialUser(authUser, socialCurrentUser),
-    [authUser, socialCurrentUser],
-  )
-  const effectiveUsersById = useMemo(
-    () => ({ ...socialUsersById, [effectiveCurrentUser.id]: effectiveCurrentUser }),
-    [effectiveCurrentUser, socialUsersById],
-  )
+  const savedPosts = useMemo<SocialPost[]>(() => [], [])
   const profileUser = profileUserId ? effectiveUsersById[profileUserId] ?? null : null
 
   useEffect(() => {
@@ -1830,13 +1890,13 @@ function AuthScreen({
 
           <label>
             Nombre de usuario
-            <input
-              value={username}
-              onChange={(event) => onUsernameChange(event.target.value)}
-              placeholder="fernandorm"
-              autoComplete="username"
-              required
-            />
+              <input
+                value={username}
+                onChange={(event) => onUsernameChange(event.target.value)}
+                placeholder="tuusuario"
+                autoComplete="username"
+                required
+              />
           </label>
 
           <label>
