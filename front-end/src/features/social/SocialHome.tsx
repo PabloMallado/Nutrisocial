@@ -8,8 +8,12 @@ type SocialHomeProps = {
   commentsByPostId: Record<string, SocialComment[]>
   currentUser: SocialUser
   usersById: Record<string, SocialUser>
+  savedRecipeIds: Set<string>
+  likedPostIds: Set<string>
   onOpenProfile: (userId: string) => void
   onAddComment: (postId: string, message: string) => void
+  onToggleLike: (postId: string) => void
+  onToggleSaveRecipe: (recipeId: string) => void
 }
 
 export function SocialHome({
@@ -18,8 +22,12 @@ export function SocialHome({
   commentsByPostId,
   currentUser,
   usersById,
+  savedRecipeIds,
+  likedPostIds,
   onOpenProfile,
   onAddComment,
+  onToggleLike,
+  onToggleSaveRecipe,
 }: SocialHomeProps) {
   return (
     <section className="social-home">
@@ -56,8 +64,12 @@ export function SocialHome({
                 comments={commentsByPostId[post.id] ?? []}
                 currentUser={currentUser}
                 usersById={usersById}
+                isSaved={savedRecipeIds.has(post.id.replace(/^recipe-/, ''))}
+                isLiked={likedPostIds.has(post.id)}
                 onOpenProfile={onOpenProfile}
                 onAddComment={onAddComment}
+                onToggleLike={onToggleLike}
+                onToggleSaveRecipe={() => onToggleSaveRecipe(post.id.replace(/^recipe-/, ''))}
               />
             )
           })

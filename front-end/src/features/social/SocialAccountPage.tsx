@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { PostCard } from './components/PostCard'
 import type { AccountSection, SocialComment, SocialPost, SocialUser } from './types'
 
@@ -7,9 +8,13 @@ type SocialAccountPageProps = {
   savedPosts: SocialPost[]
   commentsByPostId: Record<string, SocialComment[]>
   usersById: Record<string, SocialUser>
+  savedRecipeIds: Set<string>
+  likedPostIds: Set<string>
   isDarkMode: boolean
   onOpenProfile: (userId: string) => void
   onAddComment: (postId: string, message: string) => void
+  onToggleLike: (postId: string) => void
+  onToggleSaveRecipe: (recipeId: string) => void
   onSelectAccountSection: (section: AccountSection) => void
   onToggleDarkMode: (enabled: boolean) => void
 }
@@ -40,19 +45,56 @@ const accountNav: Array<{ id: AccountSection; label: string }> = [
   { id: 'preferences', label: 'Configuracion' },
 ]
 
+type SettingsModal = 'profile' | 'privacy' | 'notifications' | null
+
 export function SocialAccountPage({
   currentUser,
   accountSection,
   savedPosts,
   commentsByPostId,
   usersById,
+  savedRecipeIds,
+  likedPostIds,
   isDarkMode,
   onOpenProfile,
   onAddComment,
+  onToggleLike,
+  onToggleSaveRecipe,
   onSelectAccountSection,
   onToggleDarkMode,
 }: SocialAccountPageProps) {
   const activeMeta = sectionMeta[accountSection]
+  const [settingsModal, setSettingsModal] = useState<SettingsModal>(null)
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null)
+  const [profileDraft, setProfileDraft] = useState({
+    displayName: currentUser.displayName,
+    username: currentUser.username,
+    bio: currentUser.bio,
+  })
+  const [privacyDraft, setPrivacyDraft] = useState({
+    publicRecipes: true,
+    allowMessages: false,
+    showActivity: true,
+  })
+  const [notificationDraft, setNotificationDraft] = useState({
+    comments: true,
+    followers: true,
+    recipes: false,
+  })
+
+  function openSettingsModal(modal: Exclude<SettingsModal, null>) {
+    setSettingsMessage(null)
+    setSettingsModal(modal)
+  }
+
+  function closeSettingsModal() {
+    setSettingsModal(null)
+  }
+
+  function saveSettings(message: string) {
+    setSettingsMessage(message)
+    setSettingsModal(null)
+  }
 
   return (
     <section className="social-account-page">
@@ -153,8 +195,12 @@ export function SocialAccountPage({
                     comments={commentsByPostId[post.id] ?? []}
                     currentUser={currentUser}
                     usersById={usersById}
+                    isSaved={savedRecipeIds.has(post.id.replace(/^recipe-/, ''))}
+                    isLiked={likedPostIds.has(post.id)}
                     onOpenProfile={onOpenProfile}
                     onAddComment={onAddComment}
+                    onToggleLike={onToggleLike}
+                    onToggleSaveRecipe={() => onToggleSaveRecipe(post.id.replace(/^recipe-/, ''))}
                   />
                 )
               })}
@@ -174,19 +220,20 @@ export function SocialAccountPage({
             <article className="social-account-setting-card">
               <strong>Perfil publico</strong>
               <p>Nombre, foto y bio visibles para la comunidad.</p>
-              <span>Editar perfil</span>
+              <button type="button" onClick={() => openSettingsModal('profile')}>Editar perfil</button>
             </article>
             <article className="social-account-setting-card">
               <strong>Privacidad</strong>
               <p>Decide quien puede ver tus recetas y escribirte.</p>
-              <span>Gestionar privacidad</span>
+              <button type="button" onClick={() => openSettingsModal('privacy')}>Gestionar privacidad</button>
             </article>
             <article className="social-account-setting-card">
               <strong>Notificaciones</strong>
               <p>Controla avisos de comentarios, seguidores y recetas nuevas.</p>
-              <span>Configurar avisos</span>
+              <button type="button" onClick={() => openSettingsModal('notifications')}>Configurar avisos</button>
             </article>
           </div>
+          {settingsMessage ? <p className="social-settings-message">{settingsMessage}</p> : null}
         </section>
       ) : null}
 
@@ -232,6 +279,122 @@ export function SocialAccountPage({
             </article>
           </div>
         </section>
+      ) : null}
+
+      {settingsModal ? (
+        <div className="social-settings-modal-backdrop" role="presentation" onClick={closeSettingsModal}>
+          <section
+            className="social-settings-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="social-settings-modal-head">
+              <div>
+                <p className="social-post-kicker">Ajustes</p>
+                <h3 id="settings-modal-title">
+                  {settingsModal === 'profile'
+                    ? 'Editar perfil publico'
+                    : settingsModal === 'privacy'
+                      ? 'Gestionar privacidad'
+                      : 'Configurar avisos'}
+                </h3>
+              </div>
+              <button type="button" className="social-settings-modal-close" aria-label="Cerrar" onClick={closeSettingsModal}>×</button>
+            </div>
+
+            {settingsModal === 'profile' ? (
+              <form className="social-settings-form" onSubmit={(event) => {
+                event.preventDefault()
+                saveSettings('Cambios de perfil guardados para esta sesion.')
+              }}>
+                <label>
+                  Nombre visible
+                  <input value={profileDraft.displayName} onChange={(event) => setProfileDraft((current) => ({ ...current, displayName: event.target.value }))} />
+                </label>
+                <label>
+                  Usuario
+                  <input value={profileDraft.username} onChange={(event) => setProfileDraft((current) => ({ ...current, username: event.target.value }))} />
+                </label>
+                <label>
+                  Bio
+                  <textarea rows={4} value={profileDraft.bio} onChange={(event) => setProfileDraft((current) => ({ ...current, bio: event.target.value }))} />
+                </label>
+                <div className="social-settings-modal-actions">
+                  <button type="button" onClick={closeSettingsModal}>Cancelar</button>
+                  <button type="submit">Guardar</button>
+                </div>
+              </form>
+            ) : null}
+
+            {settingsModal === 'privacy' ? (
+              <form className="social-settings-form" onSubmit={(event) => {
+                event.preventDefault()
+                saveSettings('Preferencias de privacidad actualizadas.')
+              }}>
+                <label className="social-settings-toggle">
+                  <span>
+                    <strong>Recetas publicas</strong>
+                    <small>Permite que otros perfiles vean tus recetas guardadas.</small>
+                  </span>
+                  <input type="checkbox" checked={privacyDraft.publicRecipes} onChange={(event) => setPrivacyDraft((current) => ({ ...current, publicRecipes: event.target.checked }))} />
+                </label>
+                <label className="social-settings-toggle">
+                  <span>
+                    <strong>Mensajes directos</strong>
+                    <small>Autoriza que otros usuarios puedan escribirte.</small>
+                  </span>
+                  <input type="checkbox" checked={privacyDraft.allowMessages} onChange={(event) => setPrivacyDraft((current) => ({ ...current, allowMessages: event.target.checked }))} />
+                </label>
+                <label className="social-settings-toggle">
+                  <span>
+                    <strong>Mostrar actividad</strong>
+                    <small>Enseña comentarios y recetas guardadas recientes.</small>
+                  </span>
+                  <input type="checkbox" checked={privacyDraft.showActivity} onChange={(event) => setPrivacyDraft((current) => ({ ...current, showActivity: event.target.checked }))} />
+                </label>
+                <div className="social-settings-modal-actions">
+                  <button type="button" onClick={closeSettingsModal}>Cancelar</button>
+                  <button type="submit">Guardar</button>
+                </div>
+              </form>
+            ) : null}
+
+            {settingsModal === 'notifications' ? (
+              <form className="social-settings-form" onSubmit={(event) => {
+                event.preventDefault()
+                saveSettings('Avisos configurados correctamente.')
+              }}>
+                <label className="social-settings-toggle">
+                  <span>
+                    <strong>Comentarios</strong>
+                    <small>Avisar cuando alguien comente una receta.</small>
+                  </span>
+                  <input type="checkbox" checked={notificationDraft.comments} onChange={(event) => setNotificationDraft((current) => ({ ...current, comments: event.target.checked }))} />
+                </label>
+                <label className="social-settings-toggle">
+                  <span>
+                    <strong>Seguidores</strong>
+                    <small>Avisar cuando un perfil empiece a seguirte.</small>
+                  </span>
+                  <input type="checkbox" checked={notificationDraft.followers} onChange={(event) => setNotificationDraft((current) => ({ ...current, followers: event.target.checked }))} />
+                </label>
+                <label className="social-settings-toggle">
+                  <span>
+                    <strong>Recetas nuevas</strong>
+                    <small>Recibir avisos de recetas publicadas en el feed.</small>
+                  </span>
+                  <input type="checkbox" checked={notificationDraft.recipes} onChange={(event) => setNotificationDraft((current) => ({ ...current, recipes: event.target.checked }))} />
+                </label>
+                <div className="social-settings-modal-actions">
+                  <button type="button" onClick={closeSettingsModal}>Cancelar</button>
+                  <button type="submit">Guardar</button>
+                </div>
+              </form>
+            ) : null}
+          </section>
+        </div>
       ) : null}
     </section>
   )

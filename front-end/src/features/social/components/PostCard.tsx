@@ -10,8 +10,12 @@ type PostCardProps = {
   comments: SocialComment[]
   currentUser: SocialUser
   usersById: Record<string, SocialUser>
+  isSaved: boolean
+  isLiked: boolean
   onOpenProfile: (userId: string) => void
   onAddComment: (postId: string, message: string) => void
+  onToggleLike: (postId: string) => void
+  onToggleSaveRecipe: () => void
 }
 
 export function PostCard({
@@ -20,13 +24,18 @@ export function PostCard({
   comments,
   currentUser,
   usersById,
+  isSaved,
+  isLiked,
   onOpenProfile,
   onAddComment,
+  onToggleLike,
+  onToggleSaveRecipe,
 }: PostCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [showHealthAnalysis, setShowHealthAnalysis] = useState(false)
   const [draftComment, setDraftComment] = useState('')
   const healthAnalysis = analyzeRecipeHealth(post.recipe)
+  const visibleLikesCount = post.likesCount + (isLiked ? 1 : 0)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -54,13 +63,24 @@ export function PostCard({
           </div>
         </button>
 
-        <button
-          type="button"
-          className="social-expand-btn"
-          onClick={() => setIsExpanded((current) => !current)}
-        >
-          {isExpanded ? 'Ocultar detalle' : 'Abrir publicación'}
-        </button>
+        <div className="social-post-top-actions">
+          <button
+            type="button"
+            className={`social-save-btn ${isSaved ? 'is-saved' : ''}`}
+            aria-label={isSaved ? 'Quitar receta guardada' : 'Guardar receta'}
+            title={isSaved ? 'Quitar receta guardada' : 'Guardar receta'}
+            onClick={onToggleSaveRecipe}
+          >
+            <span aria-hidden="true">{isSaved ? '★' : '☆'}</span>
+          </button>
+          <button
+            type="button"
+            className="social-expand-btn"
+            onClick={() => setIsExpanded((current) => !current)}
+          >
+            {isExpanded ? 'Ocultar detalle' : 'Abrir publicación'}
+          </button>
+        </div>
       </div>
 
       <div className="social-post-media-wrap">
@@ -76,14 +96,21 @@ export function PostCard({
 
         <div className="social-post-meta">
           <span>{formatRelativeDate(post.createdAt)}</span>
-          <span>{post.likesCount} me gusta</span>
+          <span>{visibleLikesCount} me gusta</span>
           <span>{comments.length} comentarios</span>
           <span>{post.recipe.calories} kcal</span>
         </div>
       </div>
 
       <div className="social-post-actions">
-        <button type="button">Me gusta</button>
+        <button
+          type="button"
+          className={isLiked ? 'is-liked' : ''}
+          aria-pressed={isLiked}
+          onClick={() => onToggleLike(post.id)}
+        >
+          {isLiked ? 'Te gusta' : 'Me gusta'}
+        </button>
         <button type="button" onClick={() => setIsExpanded(true)}>Comentar</button>
         <button
           type="button"

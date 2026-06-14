@@ -4,12 +4,14 @@ import type { SocialComment, SocialState, SocialUser } from './types'
 type Action =
   | { type: 'follow_user'; userId: string }
   | { type: 'send_friend_request'; userId: string }
+  | { type: 'toggle_like'; postId: string }
   | { type: 'add_comment'; postId: string; authorId: string; message: string }
 
 function buildInitialState(currentUserId: string): SocialState {
   return {
     currentUserId,
     commentsByPostId: {},
+    likedPostIds: [],
     followingIds: [],
     sentFriendRequestIds: [],
   }
@@ -38,6 +40,16 @@ function socialReducer(state: SocialState, action: Action): SocialState {
       return {
         ...state,
         sentFriendRequestIds: [...state.sentFriendRequestIds, action.userId],
+      }
+    }
+    case 'toggle_like': {
+      const isLiked = state.likedPostIds.includes(action.postId)
+
+      return {
+        ...state,
+        likedPostIds: isLiked
+          ? state.likedPostIds.filter((postId) => postId !== action.postId)
+          : [...state.likedPostIds, action.postId],
       }
     }
     case 'add_comment': {
@@ -80,6 +92,7 @@ export function useSocialState(currentUserId: string, usersById: Record<string, 
     () => new Set(state.sentFriendRequestIds),
     [state.sentFriendRequestIds],
   )
+  const likedPostSet = useMemo(() => new Set(state.likedPostIds), [state.likedPostIds])
 
   const followingUsers = useMemo(
     () => state.followingIds.map((userId) => usersById[userId]).filter(Boolean),
@@ -98,13 +111,19 @@ export function useSocialState(currentUserId: string, usersById: Record<string, 
     dispatch({ type: 'add_comment', postId, authorId: currentUserId, message })
   }, [currentUserId])
 
+  const toggleLike = useCallback((postId: string) => {
+    dispatch({ type: 'toggle_like', postId })
+  }, [])
+
   return {
     commentsByPostId: state.commentsByPostId,
     followingUsers,
     followingSet,
     requestSet,
+    likedPostSet,
     followUser,
     sendFriendRequest,
     addComment,
+    toggleLike,
   }
 }
