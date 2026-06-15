@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { copyFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import electronPath from 'electron'
 
@@ -40,12 +41,48 @@ function runProcess(command, args, label, extraEnv = {}) {
   return child
 }
 
+function runOneShot(command, args, label) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: 'inherit',
+      shell: isWindows && command === 'docker',
+      cwd: projectRoot,
+    })
+
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolve()
+        return
+      }
+      reject(new Error(`${label} terminado con codigo ${code}`))
+    })
+  })
+}
+
 function getApiCommand() {
   if (isWindows) {
     return { command: 'py', args: ['-m', 'uvicorn'] }
   }
 
   return { command: 'python3', args: ['-m', 'uvicorn'] }
+}
+
+async function ensureLocalEnv() {
+  const envPath = fileURLToPath(new URL('../.env', import.meta.url))
+  const examplePath = fileURLToPath(new URL('../.env.example', import.meta.url))
+  if (!existsSync(envPath) && existsSync(examplePath)) {
+    copyFileSync(examplePath, envPath)
+  }
+}
+
+async function ensureDatabase() {
+  try {
+    console.log('[desktop] levantando MySQL...')
+    await runOneShot('docker', ['compose', 'up', '-d', 'mysql'], 'docker compose')
+  } catch (error) {
+    console.warn(`[desktop] no se pudo levantar MySQL automaticamente: ${error.message}`)
+    console.warn('[desktop] arranca Docker Desktop y ejecuta: npm run db:up')
+  }
 }
 
 async function waitForService(url, label, timeoutMs = 30000) {
@@ -78,6 +115,9 @@ process.on('SIGTERM', () => {
 })
 
 async function main() {
+  await ensureLocalEnv()
+  await ensureDatabase()
+
   const apiWasRunning = await isReachable(apiHealthUrl)
   const webWasRunning = await isReachable(rendererUrl)
 

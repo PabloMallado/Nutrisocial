@@ -23,7 +23,46 @@ Aplicacion para gestionar tiendas, productos, recetas y una parte social de rece
 - Docker Desktop, si quieres levantar MySQL en contenedor
 - MySQL 8+, si prefieres usar una base de datos local sin Docker
 
-## Configuracion rapida
+## Arranque rapido despues de clonar
+
+En Windows, con Node.js, Python y Docker Desktop instalados:
+
+```powershell
+.\START-WINDOWS.bat
+```
+
+Ese lanzador hace lo necesario para desarrollo local:
+
+- crea `.env` desde `.env.example` si no existe;
+- instala dependencias de Node con `npm ci`;
+- instala dependencias de Python desde `requirements.txt`;
+- levanta MySQL con Docker usando `docker-compose.yml`;
+- carga `backend/db/init.sql` automaticamente la primera vez que se crea el volumen de MySQL;
+- arranca la API, Vite y Electron.
+
+Tambien puedes ejecutar lo mismo con:
+
+```powershell
+npm start
+```
+
+Si solo quieres preparar dependencias sin arrancar la aplicacion:
+
+```powershell
+npm run setup
+```
+
+## Que se sube a Git
+
+No subas `node_modules/`, `dist/`, `dist-package/`, `.env`, caches ni builds generadas. El repositorio ya contiene lo necesario para reproducirlo:
+
+- `package.json` y `package-lock.json` para dependencias de Node.
+- `requirements.txt` para dependencias de Python.
+- `docker-compose.yml` para MySQL.
+- `backend/db/init.sql` para crear la base de datos y datos iniciales.
+- `.env.example` como plantilla de configuracion.
+
+## Configuracion manual
 
 1. Copia variables de entorno:
 
@@ -50,10 +89,10 @@ VITE_API_URL=http://localhost:4000
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
 
-3. Instala dependencias de Node si no las tienes:
+3. Instala dependencias de Node:
 
 ```bash
-npm install
+npm ci
 ```
 
 4. Instala dependencias de Python:

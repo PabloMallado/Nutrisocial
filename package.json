@@ -5,6 +5,8 @@
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {
+    "setup": "powershell -ExecutionPolicy Bypass -File scripts/setup.ps1",
+    "start": "powershell -ExecutionPolicy Bypass -File scripts/start-dev.ps1",
     "dev": "vite",
     "dev:api": "python -m uvicorn backend.api.main:app --reload --host 0.0.0.0 --port 4000",
     "dev:desktop": "node electron/dev-runner.mjs",
@@ -13,6 +15,8 @@
     "db:logs": "docker compose logs -f mysql",
     "build": "tsc -b && vite build",
     "build:desktop": "npm run build && electron-builder",
+    "build:desktop:win": "npm run build && electron-builder --win",
+    "package:win": "powershell -ExecutionPolicy Bypass -File scripts/package-win.ps1",
     "start:desktop": "electron .",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -50,15 +54,39 @@
       "dist/**/*",
       "electron/**/*",
       "backend/**/*",
+      "docker-compose.yml",
       "package.json",
+      "package-lock.json",
       ".env.example",
       "requirements.txt"
+    ],
+    "extraResources": [
+      {
+        "from": "backend/db/init.sql",
+        "to": "database/init.sql"
+      },
+      {
+        "from": "docker-compose.yml",
+        "to": "docker-compose.yml"
+      },
+      {
+        "from": "requirements.txt",
+        "to": "requirements.txt"
+      },
+      {
+        "from": ".env.example",
+        "to": ".env.example"
+      }
     ],
     "directories": {
       "buildResources": "electron/assets"
     },
     "win": {
-      "target": "nsis"
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis",
+        "zip"
+      ]
     }
   }
 }
