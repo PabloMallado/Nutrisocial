@@ -850,6 +850,11 @@ function App() {
   const profileMatch = locationRoute.pathname.match(/^\/perfil\/([^/]+)$/)
   const profileUserId = profileMatch ? decodeURIComponent(profileMatch[1]) : null
   const isProfileRoute = profileUserId !== null
+  const visibleActiveSection: MainSection = isProfileRoute
+    ? 'perfil'
+    : activeSection === 'perfil'
+      ? 'inicio'
+      : activeSection
   const feedPosts = useMemo(
     () => feedTab === 'para-ti'
       ? socialPosts
@@ -880,21 +885,21 @@ function App() {
     })
   }
 
-  useEffect(() => {
-    if (isProfileRoute && activeSection !== 'perfil') {
-      setActiveSection('perfil')
-    }
-  }, [activeSection, isProfileRoute])
-
   const openSocialProfile = useCallback((userId: string) => {
+    const profilePath = `/perfil/${userId}`
     setActiveSection('perfil')
-    navigate(`/perfil/${userId}`)
-  }, [navigate])
+    if (locationRoute.pathname !== profilePath) {
+      navigate(profilePath)
+    }
+  }, [locationRoute.pathname, navigate])
 
   const handleSectionSelect = useCallback((section: typeof activeSection) => {
     if (section === 'perfil') {
+      const profilePath = `/perfil/${effectiveCurrentUser.id}`
       setActiveSection('perfil')
-      navigate(`/perfil/${effectiveCurrentUser.id}`)
+      if (locationRoute.pathname !== profilePath) {
+        navigate(profilePath)
+      }
       return
     }
 
@@ -923,13 +928,13 @@ function App() {
 
   const headerDescription = isProfileRoute
     ? 'Perfil de usuario en vista independiente'
-      : activeSection === 'inicio'
+      : visibleActiveSection === 'inicio'
         ? (feedTab === 'para-ti'
             ? 'Feed social general con publicaciones de perfiles creados'
             : 'Publicaciones solo de perfiles que sigues en estado local')
-        : activeSection === 'cuenta'
+        : visibleActiveSection === 'cuenta'
           ? 'Zona personal para gestionar tu perfil y preferencias'
-        : `${labelForSection(activeSection)} en la estructura principal`
+        : `${labelForSection(visibleActiveSection)} en la estructura principal`
 
   const renderProductCard = (p: Product, action: 'add' | 'remove') => {
     const storeLabel = productStoreLabel(storeById.get(p.storeId))
@@ -1044,7 +1049,7 @@ function App() {
             <button
               key={item.id}
               type="button"
-              className={`side-nav-item ${activeSection === item.id ? 'active' : ''}`}
+              className={`side-nav-item ${visibleActiveSection === item.id ? 'active' : ''}`}
               onClick={() => handleSectionSelect(item.id as typeof activeSection)}
             >
               {item.label}
@@ -1055,7 +1060,7 @@ function App() {
 
       <main className="main-feed">
         <header className="feed-header card-surface">
-          {!isProfileRoute && activeSection === 'inicio' && (
+          {!isProfileRoute && visibleActiveSection === 'inicio' && (
             <div className="feed-tabs">
               <button
                 type="button"
@@ -1105,7 +1110,7 @@ function App() {
               <p className="muted">No existe un perfil para la ruta solicitada.</p>
             </section>
           )
-        ) : activeSection === 'inicio' ? (
+        ) : visibleActiveSection === 'inicio' ? (
           <SocialHome
             feedTab={feedTab}
             posts={feedPosts}
@@ -1119,7 +1124,7 @@ function App() {
             onToggleLike={toggleLike}
             onToggleSaveRecipe={toggleSavedRecipe}
           />
-        ) : activeSection === 'cuenta' ? (
+        ) : visibleActiveSection === 'cuenta' ? (
           <SocialAccountPage
             currentUser={effectiveCurrentUser}
             accountSection={accountSection}
@@ -1136,7 +1141,7 @@ function App() {
             onSelectAccountSection={openAccountSection}
             onToggleDarkMode={(enabled) => setThemeMode(enabled ? 'dark' : 'light')}
           />
-        ) : activeSection === 'productos' ? (
+        ) : visibleActiveSection === 'productos' ? (
           <section className="panel card-surface product-panel">
             <div className="recipes-toolbar product-toolbar">
               <div className="panel-headline">
@@ -1253,7 +1258,7 @@ function App() {
               </section>
             </div>
           </section>
-        ) : activeSection === 'tiendas' ? (
+        ) : visibleActiveSection === 'tiendas' ? (
           <section className="panel card-surface">
             <div className="recipes-toolbar">
               <div className="panel-headline">
@@ -1284,7 +1289,7 @@ function App() {
               })}
             </div>
           </section>
-        ) : activeSection === 'recetas' ? (
+        ) : visibleActiveSection === 'recetas' ? (
           <section className="panel card-surface">
             <div className="recipes-toolbar">
               <div className="panel-headline">
@@ -1323,7 +1328,7 @@ function App() {
           <section className="panel card-surface">
             <div className="panel-headline">
               <p className="eyebrow">Seccion</p>
-              <h2>{labelForSection(activeSection)}</h2>
+              <h2>{labelForSection(visibleActiveSection)}</h2>
             </div>
             <p className="muted">Selecciona Productos, Tiendas o Recetas para usar Añadir, Editar y Eliminar.</p>
           </section>
@@ -1744,7 +1749,7 @@ function AuthScreen({
               <input
                 value={name}
                 onChange={(event) => onNameChange(event.target.value)}
-                placeholder="Fernando RM"
+                placeholder="Añada un nombre para su perfil"
                 autoComplete="name"
                 required
               />
@@ -1756,7 +1761,7 @@ function AuthScreen({
               <input
                 value={username}
                 onChange={(event) => onUsernameChange(event.target.value)}
-                placeholder="tuusuario"
+                placeholder="Añada un nombre de usuario"
                 autoComplete="username"
                 required
               />
@@ -1767,6 +1772,7 @@ function AuthScreen({
             <input
               type="password"
               value={password}
+              placeholder="Añada una contraseña"
               onChange={(event) => onPasswordChange(event.target.value)}
               autoComplete={isRegister ? 'new-password' : 'current-password'}
               required
@@ -1779,6 +1785,7 @@ function AuthScreen({
               <input
                 type="password"
                 value={confirmPassword}
+                placeholder="Confirme su contraseña"
                 onChange={(event) => onConfirmPasswordChange(event.target.value)}
                 autoComplete="new-password"
                 required
