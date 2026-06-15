@@ -1,6 +1,5 @@
 import { PostCard } from './components/PostCard'
 import { FollowButton } from './components/FollowButton'
-import { FriendRequestButton } from './components/FriendRequestButton'
 import type { SocialComment, SocialPost, SocialUser } from './types'
 
 type SocialProfilePageProps = {
@@ -12,10 +11,8 @@ type SocialProfilePageProps = {
   savedRecipeIds: Set<string>
   likedPostIds: Set<string>
   isFollowing: boolean
-  hasRequest: boolean
   onOpenProfile: (userId: string) => void
   onFollowUser: (userId: string) => void
-  onSendFriendRequest: (userId: string) => void
   onAddComment: (postId: string, message: string) => void
   onToggleLike: (postId: string) => void
   onToggleSaveRecipe: (recipeId: string) => void
@@ -30,14 +27,14 @@ export function SocialProfilePage({
   savedRecipeIds,
   likedPostIds,
   isFollowing,
-  hasRequest,
   onOpenProfile,
   onFollowUser,
-  onSendFriendRequest,
   onAddComment,
   onToggleLike,
   onToggleSaveRecipe,
 }: SocialProfilePageProps) {
+  const isOwnProfile = user.id === currentUser.id || user.username === currentUser.username
+
   return (
     <section className="social-profile-page">
       <header className="social-profile-page-header">
@@ -60,13 +57,11 @@ export function SocialProfilePage({
               <span>Siguiendo</span>
             </div>
           </div>
-          <div className="social-profile-actions">
-            <FollowButton isFollowing={isFollowing} onClick={() => onFollowUser(user.id)} />
-            <FriendRequestButton
-              hasRequest={hasRequest}
-              onClick={() => onSendFriendRequest(user.id)}
-            />
-          </div>
+          {!isOwnProfile && (
+            <div className="social-profile-actions">
+              <FollowButton isFollowing={isFollowing} onClick={() => onFollowUser(user.id)} />
+            </div>
+          )}
         </div>
       </header>
 

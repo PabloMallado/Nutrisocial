@@ -32,6 +32,7 @@ type ThemeMode = 'light' | 'dark'
 type AuthMode = 'login' | 'register'
 type IngredientStep = 'select' | 'amount'
 type ProductSortOption = 'recent' | 'name' | 'protein' | 'calories'
+type RecipeTab = 'mine' | 'saved'
 type ExternalProductPreview = { code: string; existing_id: number | null; id?: number; name: string; brand: string; category: string; store: string; image_url: string | null; calories: number; protein: number; carbs: number; fat: number; reference_amount: number; reference_unit: string; status?: 'imported' | 'updated' }
 type OpenFoodFactsSearchResponse = { ok: boolean; query: string; products: ExternalProductPreview[] }
 type OpenFoodFactsImportOneResponse = { ok: boolean; product: ExternalProductPreview & { id: number; status: 'imported' | 'updated' } }
@@ -135,6 +136,7 @@ const storeRememberedUsername = (username: string | null) => {
 
 const savedProductsStorageKey = 'nutrisocial-saved-product-ids'
 const savedRecipesStorageKey = 'nutrisocial-saved-recipe-ids'
+const publishedRecipesStorageKey = 'nutrisocial-published-recipe-ids'
 const appPreferencesStorageKey = 'nutrisocial-app-preferences'
 const defaultAppPreferences: AppPreferences = {
   activeSection: 'inicio',
@@ -177,6 +179,22 @@ const readSavedRecipeIds = () => {
 const storeSavedRecipeIds = (ids: Set<string>) => {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(savedRecipesStorageKey, JSON.stringify([...ids]))
+}
+
+const readPublishedRecipeIds = () => {
+  if (typeof window === 'undefined') return new Set<string>()
+  try {
+    const rawValue = window.localStorage.getItem(publishedRecipesStorageKey)
+    const parsed = rawValue ? JSON.parse(rawValue) : []
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : [])
+  } catch {
+    return new Set<string>()
+  }
+}
+
+const storePublishedRecipeIds = (ids: Set<string>) => {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(publishedRecipesStorageKey, JSON.stringify([...ids]))
 }
 
 const readAppPreferences = (): AppPreferences => {
@@ -226,7 +244,6 @@ const userToSocialUser = (user: User): SocialUser => ({
   followingCount: 0,
   relationshipWithMe: {
     followStatus: 'not_following',
-    friendshipStatus: 'none',
   },
 })
 
@@ -241,7 +258,6 @@ const authUserToSocialUser = (authUser: AuthUser): SocialUser => {
     followingCount: 0,
     relationshipWithMe: {
       followStatus: 'following',
-      friendshipStatus: 'friends',
     },
   }
 }
@@ -349,11 +365,13 @@ function App() {
   const [storeSyncLoading, setStoreSyncLoading] = useState(false)
   const [savedProductIds, setSavedProductIds] = useState<Set<string>>(() => readSavedProductIds())
   const [savedRecipeIds, setSavedRecipeIds] = useState<Set<string>>(() => readSavedRecipeIds())
+  const [publishedRecipeIds, setPublishedRecipeIds] = useState<Set<string>>(() => readPublishedRecipeIds())
   const [checkedProductIds, setCheckedProductIds] = useState<Set<string>>(() => new Set(preferences.checkedProductIds))
   const [productSearchTerm, setProductSearchTerm] = useState(preferences.productSearchTerm)
   const [productSort, setProductSort] = useState<ProductSortOption>(preferences.productSort)
   const [productStoreFilter, setProductStoreFilter] = useState(preferences.productStoreFilter)
   const [showRecipeForm, setShowRecipeForm] = useState(false)
+  const [recipeTab, setRecipeTab] = useState<RecipeTab>('mine')
   const [recipeForm, setRecipeForm] = useState<RecipeForm>(blankRecipeForm())
   const [ingredientPickerOpen, setIngredientPickerOpen] = useState(false)
   const [ingredientStep, setIngredientStep] = useState<IngredientStep>('select')
@@ -392,18 +410,16 @@ function App() {
 
     return nextUsers
   }, [effectiveCurrentUser, users])
-  const socialPosts = useMemo(
-    () => recipesCrud.map(recipeToSocialPost),
-    [recipesCrud],
+  const publishedSocialPosts = useMemo(
+    () => recipesCrud.filter((recipe) => publishedRecipeIds.has(recipe.id)).map(recipeToSocialPost),
+    [publishedRecipeIds, recipesCrud],
   )
   const {
     commentsByPostId,
     followingUsers,
     followingSet,
-    requestSet,
     likedPostSet,
     followUser,
-    sendFriendRequest,
     addComment,
     toggleLike,
   } = useSocialState(effectiveCurrentUser.id, effectiveUsersById)
@@ -633,8 +649,17 @@ function App() {
       ingredients,
     }
     try {
-      await postJson('/api/recipes', payload)
-      setCrudMessage('Receta creada.')
+      const result = await postJson('/api/recipes', payload) as { id?: number | string }
+      const recipeId = result.id ? String(result.id) : null
+      if (recipeId) {
+        setSavedRecipeIds((current) => {
+          const next = new Set(current)
+          next.add(recipeId)
+          storeSavedRecipeIds(next)
+          return next
+        })
+      }
+      setCrudMessage('Receta guardada en Mis recetas. Puedes publicarla cuando quieras.')
       await loadCrudData()
       setShowRecipeForm(false)
       resetRecipeEditor()
@@ -857,21 +882,25 @@ function App() {
       : activeSection
   const feedPosts = useMemo(
     () => feedTab === 'para-ti'
-      ? socialPosts
-      : socialPosts.filter((post) => followingSet.has(post.authorId)),
-    [feedTab, followingSet, socialPosts],
+      ? publishedSocialPosts
+      : publishedSocialPosts.filter((post) => followingSet.has(post.authorId)),
+    [feedTab, followingSet, publishedSocialPosts],
   )
   const profilePosts = useMemo(
-    () => (profileUserId ? socialPosts.filter((post) => post.authorId === profileUserId) : []),
-    [profileUserId, socialPosts],
+    () => (profileUserId ? publishedSocialPosts.filter((post) => post.authorId === profileUserId) : []),
+    [profileUserId, publishedSocialPosts],
   )
   const savedPosts = useMemo(
-    () => socialPosts.filter((post) => savedRecipeIds.has(post.id.replace(/^recipe-/, ''))),
-    [savedRecipeIds, socialPosts],
+    () => publishedSocialPosts.filter((post) => savedRecipeIds.has(post.id.replace(/^recipe-/, ''))),
+    [publishedSocialPosts, savedRecipeIds],
   )
-  const savedRecipes = useMemo(
-    () => recipesCrud.filter((recipe) => savedRecipeIds.has(recipe.id)),
-    [recipesCrud, savedRecipeIds],
+  const myRecipes = useMemo(
+    () => recipesCrud.filter((recipe) => recipe.userId === String(authUser?.id ?? '')),
+    [authUser?.id, recipesCrud],
+  )
+  const favoriteRecipes = useMemo(
+    () => recipesCrud.filter((recipe) => recipe.userId !== String(authUser?.id ?? '') && savedRecipeIds.has(recipe.id)),
+    [authUser?.id, recipesCrud, savedRecipeIds],
   )
   const profileUser = profileUserId ? effectiveUsersById[profileUserId] ?? null : null
 
@@ -881,6 +910,19 @@ function App() {
       if (next.has(recipeId)) next.delete(recipeId)
       else next.add(recipeId)
       storeSavedRecipeIds(next)
+      return next
+    })
+  }
+
+  function togglePublishedRecipe(recipeId: string) {
+    const recipe = recipesCrud.find((item) => item.id === recipeId)
+    if (!recipe || recipe.userId !== String(authUser?.id ?? '')) return
+
+    setPublishedRecipeIds((current) => {
+      const next = new Set(current)
+      if (next.has(recipeId)) next.delete(recipeId)
+      else next.add(recipeId)
+      storePublishedRecipeIds(next)
       return next
     })
   }
@@ -1093,10 +1135,8 @@ function App() {
               savedRecipeIds={savedRecipeIds}
               likedPostIds={likedPostSet}
               isFollowing={followingSet.has(profileUser.id)}
-              hasRequest={requestSet.has(profileUser.id)}
               onOpenProfile={openSocialProfile}
               onFollowUser={followUser}
-              onSendFriendRequest={sendFriendRequest}
               onAddComment={addComment}
               onToggleLike={toggleLike}
               onToggleSaveRecipe={toggleSavedRecipe}
@@ -1301,28 +1341,110 @@ function App() {
               </button>
             </div>
 
-            <div className="recipe-list">
-              {savedRecipes.length === 0 ? (
-                <article className="recipe-empty">
-                  <h3>Aún no has guardado ninguna receta</h3>
-                  <p>Guarda una receta desde el feed social para verla aquí.</p>
-                </article>
-              ) : savedRecipes.map((recipe) => (
-                <article key={recipe.id} className="recipe-list-card">
-                  {recipe.image ? <img src={recipe.image} alt={recipe.title} /> : <div className="recipe-image-placeholder" />}
-                  <button type="button" className="recipe-list-body" onClick={() => void openRecipeDetail(recipe.id)}>
-                    <strong>{recipe.title}</strong>
-                    <p>{recipe.description || 'Sin descripción'}</p>
-                    <div className="recipe-macro-row">
-                      <span>{recipe.caloriesTotal.toFixed(0)} kcal</span>
-                      <span>{recipe.proteinTotal.toFixed(1)} g proteínas</span>
-                      <span>{recipe.carbsTotal.toFixed(1)} g hidratos</span>
-                      <span>{recipe.fatTotal.toFixed(1)} g grasas</span>
-                    </div>
-                  </button>
-                </article>
-              ))}
+            <div className="recipe-tabs" role="tablist" aria-label="Tipo de recetas">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={recipeTab === 'mine'}
+                className={recipeTab === 'mine' ? 'is-active' : ''}
+                onClick={() => setRecipeTab('mine')}
+              >
+                Mis recetas
+                <span>{myRecipes.length}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={recipeTab === 'saved'}
+                className={recipeTab === 'saved' ? 'is-active' : ''}
+                onClick={() => setRecipeTab('saved')}
+              >
+                Guardadas
+                <span>{favoriteRecipes.length}</span>
+              </button>
             </div>
+
+            {recipeTab === 'mine' ? (
+              <section className="recipe-section" role="tabpanel">
+                <div className="section-inline-head">
+                  <div>
+                    <h3>Mis recetas</h3>
+                    <p className="muted">Recetas creadas por el usuario actual. Solo estas se pueden publicar o retirar del feed.</p>
+                  </div>
+                </div>
+
+                <div className="recipe-list">
+                  {myRecipes.length === 0 ? (
+                    <article className="recipe-empty">
+                      <h3>Aún no has creado ninguna receta</h3>
+                      <p>Crea una receta para verla aquí y decidir si quieres publicarla.</p>
+                    </article>
+                  ) : myRecipes.map((recipe) => (
+                    <article key={recipe.id} className="recipe-list-card">
+                      {recipe.image ? <img src={recipe.image} alt={recipe.title} /> : <div className="recipe-image-placeholder" />}
+                      <div className="recipe-list-content">
+                        <button type="button" className="recipe-list-body" onClick={() => void openRecipeDetail(recipe.id)}>
+                          <strong>{recipe.title}</strong>
+                          <p>{recipe.description || 'Sin descripción'}</p>
+                          <div className="recipe-macro-row">
+                            <span>{recipe.caloriesTotal.toFixed(0)} kcal</span>
+                            <span>{recipe.proteinTotal.toFixed(1)} g proteínas</span>
+                            <span>{recipe.carbsTotal.toFixed(1)} g hidratos</span>
+                            <span>{recipe.fatTotal.toFixed(1)} g grasas</span>
+                          </div>
+                        </button>
+                        <div className="recipe-list-actions">
+                          <span className={`recipe-publication-status ${publishedRecipeIds.has(recipe.id) ? 'is-public' : ''}`}>
+                            {publishedRecipeIds.has(recipe.id) ? 'Publicada en el feed' : 'Privada'}
+                          </span>
+                          <button
+                            type="button"
+                            className={publishedRecipeIds.has(recipe.id) ? 'ghost-btn' : 'secondary-btn'}
+                            onClick={() => togglePublishedRecipe(recipe.id)}
+                          >
+                            {publishedRecipeIds.has(recipe.id) ? 'Quitar del feed' : 'Publicar en feed'}
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : (
+              <section className="recipe-section" role="tabpanel">
+                <div className="section-inline-head">
+                  <div>
+                    <h3>Guardadas</h3>
+                    <p className="muted">Recetas que has marcado como favoritas desde el feed.</p>
+                  </div>
+                </div>
+
+                <div className="recipe-list">
+                  {favoriteRecipes.length === 0 ? (
+                    <article className="recipe-empty">
+                      <h3>Aún no has guardado ninguna receta</h3>
+                      <p>Marca una receta como favorita desde el feed para verla aquí.</p>
+                    </article>
+                  ) : favoriteRecipes.map((recipe) => (
+                    <article key={recipe.id} className="recipe-list-card">
+                      {recipe.image ? <img src={recipe.image} alt={recipe.title} /> : <div className="recipe-image-placeholder" />}
+                      <div className="recipe-list-content">
+                        <button type="button" className="recipe-list-body" onClick={() => void openRecipeDetail(recipe.id)}>
+                          <strong>{recipe.title}</strong>
+                          <p>{recipe.description || 'Sin descripción'}</p>
+                          <div className="recipe-macro-row">
+                            <span>{recipe.caloriesTotal.toFixed(0)} kcal</span>
+                            <span>{recipe.proteinTotal.toFixed(1)} g proteínas</span>
+                            <span>{recipe.carbsTotal.toFixed(1)} g hidratos</span>
+                            <span>{recipe.fatTotal.toFixed(1)} g grasas</span>
+                          </div>
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
           </section>
         ) : (
           <section className="panel card-surface">

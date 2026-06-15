@@ -676,6 +676,53 @@
   gap: 0.85rem;
 }
 
+.recipe-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: fit-content;
+  margin: 0.25rem 0 0.95rem;
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-soft);
+}
+
+.recipe-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-height: 38px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0.44rem 0.78rem;
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.recipe-tabs button.is-active {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--primary) 24%, transparent);
+}
+
+.recipe-tabs span {
+  min-width: 1.45rem;
+  border-radius: 999px;
+  padding: 0.1rem 0.38rem;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.recipe-section {
+  display: grid;
+  gap: 0.85rem;
+}
+
 .recipe-empty {
   display: grid;
   gap: 0.3rem;
@@ -719,6 +766,41 @@
   padding: 0.82rem;
   text-align: left;
   cursor: pointer;
+}
+
+.recipe-list-content {
+  display: grid;
+  min-width: 0;
+}
+
+.recipe-list-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0 0.82rem 0.82rem;
+}
+
+.recipe-list-actions .secondary-btn,
+.recipe-list-actions .ghost-btn {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.recipe-publication-status {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.22rem 0.55rem;
+  background: var(--bg-soft);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.recipe-publication-status.is-public {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--line));
+  background: color-mix(in srgb, var(--primary) 12%, var(--bg-soft));
+  color: var(--primary-strong);
 }
 
 .recipe-list-body p {
@@ -1647,6 +1729,15 @@
 
   .recipe-list-card {
     grid-template-columns: 92px minmax(0, 1fr);
+  }
+
+  .recipe-tabs {
+    width: 100%;
+  }
+
+  .recipe-tabs button {
+    flex: 1;
+    justify-content: center;
   }
 
   .ingredient-product-list {

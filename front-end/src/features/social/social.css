@@ -1215,19 +1215,6 @@
   cursor: default;
 }
 
-.social-action-btn.is-secondary {
-  background: #fff7ed;
-  color: #8a4a1d;
-  border-color: #efcda8;
-}
-
-.social-action-btn.is-sent {
-  background: #f4f5f7;
-  color: #465768;
-  border-color: #ced8e1;
-  cursor: default;
-}
-
 .social-following-card,
 .social-discover-card,
 .social-empty-card {

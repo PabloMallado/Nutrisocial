@@ -3,7 +3,6 @@ import type { SocialComment, SocialState, SocialUser } from './types'
 
 type Action =
   | { type: 'follow_user'; userId: string }
-  | { type: 'send_friend_request'; userId: string }
   | { type: 'toggle_like'; postId: string }
   | { type: 'add_comment'; postId: string; authorId: string; message: string }
 
@@ -13,7 +12,6 @@ function buildInitialState(currentUserId: string): SocialState {
     commentsByPostId: {},
     likedPostIds: [],
     followingIds: [],
-    sentFriendRequestIds: [],
   }
 }
 
@@ -27,19 +25,6 @@ function socialReducer(state: SocialState, action: Action): SocialState {
       return {
         ...state,
         followingIds: [...state.followingIds, action.userId],
-      }
-    }
-    case 'send_friend_request': {
-      if (
-        action.userId === state.currentUserId ||
-        state.sentFriendRequestIds.includes(action.userId)
-      ) {
-        return state
-      }
-
-      return {
-        ...state,
-        sentFriendRequestIds: [...state.sentFriendRequestIds, action.userId],
       }
     }
     case 'toggle_like': {
@@ -88,10 +73,6 @@ export function useSocialState(currentUserId: string, usersById: Record<string, 
   )
 
   const followingSet = useMemo(() => new Set(state.followingIds), [state.followingIds])
-  const requestSet = useMemo(
-    () => new Set(state.sentFriendRequestIds),
-    [state.sentFriendRequestIds],
-  )
   const likedPostSet = useMemo(() => new Set(state.likedPostIds), [state.likedPostIds])
 
   const followingUsers = useMemo(
@@ -100,12 +81,15 @@ export function useSocialState(currentUserId: string, usersById: Record<string, 
   )
 
   const followUser = useCallback((userId: string) => {
-    dispatch({ type: 'follow_user', userId })
-  }, [])
+    const currentUser = usersById[currentUserId]
+    const targetUser = usersById[userId]
 
-  const sendFriendRequest = useCallback((userId: string) => {
-    dispatch({ type: 'send_friend_request', userId })
-  }, [])
+    if (targetUser?.username && currentUser?.username === targetUser.username) {
+      return
+    }
+
+    dispatch({ type: 'follow_user', userId })
+  }, [currentUserId, usersById])
 
   const addComment = useCallback((postId: string, message: string) => {
     dispatch({ type: 'add_comment', postId, authorId: currentUserId, message })
@@ -119,10 +103,8 @@ export function useSocialState(currentUserId: string, usersById: Record<string, 
     commentsByPostId: state.commentsByPostId,
     followingUsers,
     followingSet,
-    requestSet,
     likedPostSet,
     followUser,
-    sendFriendRequest,
     addComment,
     toggleLike,
   }
