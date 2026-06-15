@@ -1749,7 +1749,7 @@ function AuthScreen({
               <input
                 value={name}
                 onChange={(event) => onNameChange(event.target.value)}
-                placeholder="Añada un nombre para su perfil"
+                placeholder="Añade un nombre para su perfil"
                 autoComplete="name"
                 required
               />
