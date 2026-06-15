@@ -8,7 +8,7 @@
     "setup": "powershell -ExecutionPolicy Bypass -File scripts/setup.ps1",
     "start": "powershell -ExecutionPolicy Bypass -File scripts/start-dev.ps1",
     "dev": "vite",
-    "dev:api": "python -m uvicorn backend.api.main:app --reload --host 0.0.0.0 --port 4000",
+    "dev:api": "powershell -ExecutionPolicy Bypass -File scripts/start-api.ps1",
     "dev:desktop": "node electron/dev-runner.mjs",
     "db:up": "docker compose up -d mysql",
     "db:down": "docker compose down",
@@ -20,7 +20,7 @@
     "start:desktop": "electron .",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start:api": "python -m uvicorn backend.api.main:app --host 0.0.0.0 --port 4000"
+    "start:api": "powershell -ExecutionPolicy Bypass -File scripts/start-api.ps1"
   },
   "dependencies": {
     "cors": "^2.8.6",
