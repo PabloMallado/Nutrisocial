@@ -9,12 +9,16 @@ type SocialProfilePageProps = {
   commentsByPostId: Record<string, SocialComment[]>
   currentUser: SocialUser
   usersById: Record<string, SocialUser>
+  savedRecipeIds: Set<string>
+  likedPostIds: Set<string>
   isFollowing: boolean
   hasRequest: boolean
   onOpenProfile: (userId: string) => void
   onFollowUser: (userId: string) => void
   onSendFriendRequest: (userId: string) => void
   onAddComment: (postId: string, message: string) => void
+  onToggleLike: (postId: string) => void
+  onToggleSaveRecipe: (recipeId: string) => void
 }
 
 export function SocialProfilePage({
@@ -23,12 +27,16 @@ export function SocialProfilePage({
   commentsByPostId,
   currentUser,
   usersById,
+  savedRecipeIds,
+  likedPostIds,
   isFollowing,
   hasRequest,
   onOpenProfile,
   onFollowUser,
   onSendFriendRequest,
   onAddComment,
+  onToggleLike,
+  onToggleSaveRecipe,
 }: SocialProfilePageProps) {
   return (
     <section className="social-profile-page">
@@ -73,8 +81,12 @@ export function SocialProfilePage({
               comments={commentsByPostId[post.id] ?? []}
               currentUser={currentUser}
               usersById={usersById}
+              isSaved={savedRecipeIds.has(post.id.replace(/^recipe-/, ''))}
+              isLiked={likedPostIds.has(post.id)}
               onOpenProfile={onOpenProfile}
               onAddComment={onAddComment}
+              onToggleLike={onToggleLike}
+              onToggleSaveRecipe={() => onToggleSaveRecipe(post.id.replace(/^recipe-/, ''))}
             />
           ))}
         </div>

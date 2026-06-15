@@ -7,7 +7,7 @@ import hashlib
 import secrets
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib.request import ProxyHandler, Request as UrlRequest, build_opener
 
 from dotenv import load_dotenv
@@ -78,6 +78,7 @@ HIDDEN_EXTERNAL_STORES = {
 ALLOWED_EXTERNAL_STORE_ALIASES = {
     "alcampo": "Alcampo",
     "al campo": "Alcampo",
+    "auchan": "Alcampo",
     "aldi": "Aldi",
     "carrefour": "Carrefour",
     "carrefour express": "Carrefour Express",
@@ -85,6 +86,7 @@ ALLOWED_EXTERNAL_STORE_ALIASES = {
     "coviran": "Covirán",
     "dia": "El Día",
     "el dia": "El Día",
+    "supermercados dia": "El Día",
     "eroski": "Eroski",
     "eroki": "Eroski",
     "lidl": "Lidl",
@@ -111,7 +113,9 @@ STORE_ALIASES = {
     "carrefour": "Carrefour",
     "alcampo": "Alcampo",
     "al campo": "Alcampo",
+    "auchan": "Alcampo",
 }
+OPEN_FOOD_FACTS_IMPORT_STORES = ["mercadona", "lidl", "carrefour", "aldi", "alcampo", "consum", "dia", "eroski"]
 
 
 def parse_allowed_origins() -> list[str]:
@@ -203,6 +207,19 @@ def normalize_auth_handle(value: Any) -> str:
     return text[:60]
 
 
+def initial_avatar_url(value: Any) -> str:
+    text = normalize_plain_text(value)
+    initial = next((char.upper() for char in text if char.isalnum()), "U")
+    svg = (
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'>"
+        "<rect width='160' height='160' rx='80' fill='#0d8b83'/>"
+        f"<text x='50%' y='54%' dominant-baseline='middle' text-anchor='middle' "
+        f"font-family='Arial,sans-serif' font-size='76' font-weight='700' fill='white'>{initial}</text>"
+        "</svg>"
+    )
+    return f"data:image/svg+xml,{quote(svg, safe='')}"
+
+
 def hash_password(password: str) -> str:
     salt = secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 120_000)
@@ -227,7 +244,7 @@ def public_auth_user(user: dict) -> dict:
         "id": int(user["id"]),
         "name": user["name"],
         "handle": user["handle"],
-        "avatar_url": user.get("avatar_url"),
+        "avatar_url": user.get("avatar_url") or initial_avatar_url(user.get("handle") or user.get("name")),
     }
 
 
@@ -448,9 +465,10 @@ def stores_query() -> str:
     return f"""
       SELECT
         s.id, s.name, s.description, s.address, s.city, s.latitude, s.longitude, s.logo, s.accent, s.image_url,
-        COUNT(p.id) AS products_count
+        COUNT(DISTINCT COALESCE(psl.product_id, p.id)) AS products_count
       FROM stores s
       LEFT JOIN products p ON p.store_id = s.id
+      LEFT JOIN product_store_listings psl ON psl.store_id = s.id
       WHERE s.id <> 'open-food-facts'
         AND {allowed_filter}
       GROUP BY s.id
@@ -604,7 +622,7 @@ def post_user(payload: dict | None = Body(default=None)) -> dict:
             payload.get("email"),
             payload.get("city"),
             payload.get("bio"),
-            payload.get("avatar_url"),
+            payload.get("avatar_url") or initial_avatar_url(payload.get("handle") or payload.get("name")),
             1 if payload.get("verified") else 0,
         ),
     )
@@ -629,7 +647,7 @@ def register(payload: dict | None = Body(default=None)) -> dict:
         raise HTTPException(status_code=409, detail={"message": "Ese nombre de usuario ya existe"})
 
     email = f"{handle}@nutrisocial.local"
-    avatar_url = f"https://i.pravatar.cc/160?u={handle}"
+    avatar_url = initial_avatar_url(handle)
     user_id = execute(
         """
         INSERT INTO users (name, handle, email, city, bio, avatar_url, verified, password_hash)
@@ -656,6 +674,7 @@ def login(payload: dict | None = Body(default=None)) -> dict:
 
 
 OPEN_FOOD_FACTS_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl"
+OPEN_FOOD_FACTS_SEARCH_V2_URL = "https://world.openfoodfacts.org/api/v2/search"
 OPEN_FOOD_FACTS_FIELDS = ",".join(
     [
         "code",
@@ -774,50 +793,88 @@ def product_matches_query(product: dict, query: str) -> bool:
     return all(token in haystack for token in tokens)
 
 
-def fetch_open_food_facts_products(query: str, page_size: int) -> list[dict]:
-    params = {
-        "search_terms": query,
-        "search_simple": 1,
+def fetch_open_food_facts_products(query: str = "", page_size: int = 40, page: int = 1, store: str | None = None) -> list[dict]:
+    v2_params = {
+        "page_size": page_size,
+        "page": page,
+        "fields": OPEN_FOOD_FACTS_FIELDS,
+        "countries_tags": "en:spain",
+        "sort_by": "unique_scans_n",
+    }
+    if query:
+        v2_params["search_terms"] = query
+    if store:
+        v2_params["stores_tags"] = store
+
+    cgi_params = {
         "action": "process",
         "json": 1,
         "page_size": page_size,
-        "page": 1,
+        "page": page,
         "fields": OPEN_FOOD_FACTS_FIELDS,
-        "countries_tags": "en:spain",
+        "sort_by": "unique_scans_n",
     }
-    request = UrlRequest(
-        f"{OPEN_FOOD_FACTS_SEARCH_URL}?{urlencode(params)}",
-        headers={
-            "Accept": "application/json",
-            "User-Agent": "NutriSocial-TFG/1.0 (educational local project; contact: nutrisocial@example.local)",
-        },
-    )
+    if query:
+        cgi_params["search_terms"] = query
+        cgi_params["search_simple"] = 1
+    tag_index = 0
+    if store:
+        cgi_params[f"tagtype_{tag_index}"] = "stores"
+        cgi_params[f"tag_contains_{tag_index}"] = "contains"
+        cgi_params[f"tag_{tag_index}"] = store
+        tag_index += 1
+    cgi_params[f"tagtype_{tag_index}"] = "countries"
+    cgi_params[f"tag_contains_{tag_index}"] = "contains"
+    cgi_params[f"tag_{tag_index}"] = "spain"
+
+    urls = [
+        f"{OPEN_FOOD_FACTS_SEARCH_V2_URL}?{urlencode(v2_params)}",
+        f"{OPEN_FOOD_FACTS_SEARCH_URL}?{urlencode(cgi_params)}",
+    ]
     last_error: Exception | None = None
-    try:
-        opener = build_opener(ProxyHandler({}))
-        for attempt in range(5):
+    opener = build_opener(ProxyHandler({}))
+    for url in urls:
+        request = UrlRequest(
+            url,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "NutriSocial-TFG/1.0 (educational local project; contact: nutrisocial@example.local)",
+            },
+        )
+        for attempt in range(3):
             try:
                 with opener.open(request, timeout=20) as response:
                     payload = json.loads(response.read().decode("utf-8"))
-                break
+                products = payload.get("products") if isinstance(payload, dict) else []
+                return [item for item in products if isinstance(item, dict)]
             except HTTPError as error:
                 last_error = error
-                if error.code not in {429, 500, 502, 503, 504} or attempt == 4:
-                    raise
+                if error.code not in {429, 500, 502, 503, 504}:
+                    break
                 time.sleep(1.2 * (attempt + 1))
             except (URLError, TimeoutError, json.JSONDecodeError) as error:
                 last_error = error
-                if attempt == 4:
-                    raise
                 time.sleep(1.2 * (attempt + 1))
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as error:
-        raise HTTPException(
-            status_code=502,
-            detail={"message": "No se pudo conectar con Open Food Facts", "error": safe_error(last_error or error)},
-        ) from error
 
-    products = payload.get("products") if isinstance(payload, dict) else []
-    return [item for item in products if isinstance(item, dict)]
+    raise HTTPException(
+        status_code=502,
+        detail={"message": "No se pudo conectar con Open Food Facts", "error": safe_error(last_error or Exception("Open Food Facts no respondio"))},
+    )
+
+
+def canonical_store_names(stores: list[str]) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for store_name in stores:
+        canonical_name = canonical_store_name(store_name)
+        if not canonical_name:
+            continue
+        key = normalize_plain_text(canonical_name)
+        if key in seen:
+            continue
+        seen.add(key)
+        names.append(canonical_name)
+    return names
 
 
 def ensure_external_store(cursor, name: str) -> str:
@@ -850,8 +907,7 @@ def ensure_external_store(cursor, name: str) -> str:
 
 
 def open_food_facts_preview(product: dict, existing_id: int | None = None) -> dict:
-    store_names = [canonical_store_name(store_name) for store_name in product["stores"]]
-    store_names = [store_name for store_name in store_names if store_name]
+    store_names = canonical_store_names(product["stores"])
     return {
         "code": product["code"],
         "existing_id": existing_id,
@@ -869,13 +925,14 @@ def open_food_facts_preview(product: dict, existing_id: int | None = None) -> di
     }
 
 
-def save_open_food_facts_product(cursor, product: dict) -> dict | None:
-    store_names = [canonical_store_name(store_name) for store_name in product["stores"]]
-    store_names = [store_name for store_name in store_names if store_name]
+def save_open_food_facts_product(cursor, product: dict, preferred_store: str | None = None) -> dict | None:
+    store_names = canonical_store_names(product["stores"])
     if not store_names:
         return None
 
-    primary_store_id = ensure_external_store(cursor, store_names[0])
+    preferred_canonical = canonical_store_name(preferred_store or "")
+    primary_store_name = preferred_canonical if preferred_canonical in store_names else store_names[0]
+    primary_store_id = ensure_external_store(cursor, primary_store_name)
     listing_store_ids = [ensure_external_store(cursor, store_name) for store_name in store_names]
 
     cursor.execute(
@@ -970,73 +1027,28 @@ def import_open_food_facts_products(query: str, page_size: int) -> dict:
                     if not product_matches_query(product, query):
                         skipped += 1
                         continue
-                    store_names = [canonical_store_name(store_name) for store_name in product["stores"]]
-                    store_names = [store_name for store_name in store_names if store_name]
+                    store_names = canonical_store_names(product["stores"])
                     if not store_names:
                         skipped += 1
                         continue
-                    primary_store_id = ensure_external_store(cursor, store_names[0])
-                    listing_store_ids = [ensure_external_store(cursor, store_name) for store_name in store_names]
-                    touched_store_ids.update(listing_store_ids)
 
                     cursor.execute(
                         "SELECT id FROM products WHERE source_provider = 'open_food_facts' AND external_code = %s LIMIT 1",
                         (product["code"],),
                     )
                     existing = cursor.fetchone()
+                    saved_product = save_open_food_facts_product(cursor, product)
+                    if not saved_product:
+                        skipped += 1
+                        continue
 
+                    product_id = saved_product["id"]
+                    status = saved_product["status"]
                     if existing:
-                        cursor.execute(
-                            """
-                            UPDATE products
-                            SET name = %s, category = %s, brand = %s, store_id = %s, reference_amount = %s,
-                                reference_unit = %s, image_url = %s, calories = %s, protein = %s, carbs = %s, fat = %s
-                            WHERE id = %s
-                            """,
-                            (
-                                product["name"],
-                                product["category"],
-                                product["brand"],
-                                primary_store_id,
-                                product["reference_amount"],
-                                product["reference_unit"],
-                                product["image_url"],
-                                product["calories"],
-                                product["protein"],
-                                product["carbs"],
-                                product["fat"],
-                                existing["id"],
-                            ),
-                        )
-                        product_id = existing["id"]
                         updated += 1
-                        status = "updated"
                     else:
-                        cursor.execute(
-                            """
-                            INSERT INTO products
-                              (name, category, brand, store_id, reference_amount, reference_unit, image_url,
-                               price, stock, calories, protein, carbs, fat, source_provider, external_code)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, 0, 0, %s, %s, %s, %s, 'open_food_facts', %s)
-                            """,
-                            (
-                                product["name"],
-                                product["category"],
-                                product["brand"],
-                                primary_store_id,
-                                product["reference_amount"],
-                                product["reference_unit"],
-                                product["image_url"],
-                                product["calories"],
-                                product["protein"],
-                                product["carbs"],
-                                product["fat"],
-                                product["code"],
-                            ),
-                        )
-                        product_id = cursor.lastrowid
                         imported += 1
-                        status = "imported"
+                    touched_store_ids.update(ensure_external_store(cursor, store_name) for store_name in store_names)
 
                     result_products.append(
                         {
@@ -1049,20 +1061,6 @@ def import_open_food_facts_products(query: str, page_size: int) -> dict:
                             "status": status,
                         }
                     )
-
-                    for store_id in listing_store_ids:
-                        cursor.execute(
-                            """
-                            INSERT INTO product_store_listings
-                              (product_id, store_id, price, availability_status, store_product_url, source_provider, last_checked_at)
-                            VALUES (%s, %s, NULL, 'unknown', %s, 'open_food_facts', NOW())
-                            ON DUPLICATE KEY UPDATE
-                              source_provider = VALUES(source_provider),
-                              last_checked_at = VALUES(last_checked_at),
-                              updated_at = CURRENT_TIMESTAMP
-                            """,
-                            (product_id, store_id, f"https://world.openfoodfacts.org/product/{product['code']}"),
-                        )
 
                 if not normalized_products:
                     skipped = len(raw_products)
@@ -1083,12 +1081,104 @@ def import_open_food_facts_products(query: str, page_size: int) -> dict:
     }
 
 
+def import_open_food_facts_store_products(stores: list[str], per_store: int) -> dict:
+    imported = updated = skipped = 0
+    touched_store_ids: set[str] = set()
+    result_products: list[dict] = []
+    store_summaries: list[dict] = []
+
+    with get_connection(autocommit=False) as conn:
+        try:
+            with conn.cursor() as cursor:
+                for store in stores:
+                    canonical_name = canonical_store_name(store)
+                    if not canonical_name:
+                        skipped += 1
+                        continue
+
+                    raw_products = fetch_open_food_facts_products(page_size=per_store, store=store)
+                    normalized_products = [
+                        item
+                        for item in (normalize_open_food_facts_product(product) for product in raw_products)
+                        if item
+                    ]
+                    store_imported = store_updated = store_skipped = 0
+
+                    for product in normalized_products:
+                        store_names = canonical_store_names(product["stores"])
+                        if canonical_name not in store_names:
+                            store_skipped += 1
+                            continue
+
+                        cursor.execute(
+                            "SELECT id FROM products WHERE source_provider = 'open_food_facts' AND external_code = %s LIMIT 1",
+                            (product["code"],),
+                        )
+                        existing = cursor.fetchone()
+                        saved_product = save_open_food_facts_product(cursor, product, preferred_store=canonical_name)
+                        if not saved_product:
+                            store_skipped += 1
+                            continue
+
+                        if existing:
+                            store_updated += 1
+                        else:
+                            store_imported += 1
+                        touched_store_ids.update(ensure_external_store(cursor, store_name) for store_name in store_names)
+                        if len(result_products) < 40:
+                            result_products.append(saved_product)
+
+                    imported += store_imported
+                    updated += store_updated
+                    skipped += store_skipped
+                    store_summaries.append(
+                        {
+                            "store": canonical_name,
+                            "fetched": len(raw_products),
+                            "imported": store_imported,
+                            "updated": store_updated,
+                            "skipped": store_skipped,
+                        }
+                    )
+
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    return {
+        "ok": True,
+        "imported": imported,
+        "updated": updated,
+        "skipped": skipped,
+        "storesTouched": len(touched_store_ids),
+        "stores": store_summaries,
+        "products": result_products,
+    }
+
+
 @app.post("/api/open-food-facts/import")
 def import_open_food_facts(payload: dict | None = Body(default=None)) -> dict:
     payload = payload or {}
     query = first_text(payload.get("query"), fallback="yogur")
     page_size = min(max(int_or(payload.get("page_size"), 40), 1), 80)
     return import_open_food_facts_products(query, page_size)
+
+
+@app.post("/api/open-food-facts/import-stores")
+def import_open_food_facts_stores(payload: dict | None = Body(default=None)) -> dict:
+    payload = payload or {}
+    requested_stores = payload.get("stores")
+    if isinstance(requested_stores, list) and requested_stores:
+        stores = [normalize_slug(store).replace("-", " ") for store in requested_stores]
+    else:
+        stores = OPEN_FOOD_FACTS_IMPORT_STORES
+    stores = [store for store in stores if canonical_store_name(store)]
+    if not stores:
+        raise HTTPException(status_code=400, detail={"message": "No hay tiendas compatibles para sincronizar"})
+
+    per_store = min(max(int_or(payload.get("per_store"), 60), 1), 80)
+    return import_open_food_facts_store_products(stores, per_store)
 
 
 @app.post("/api/open-food-facts/search")

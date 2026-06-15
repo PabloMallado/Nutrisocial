@@ -2,23 +2,17 @@
 import type { FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import './App.css'
-import { LocationPanel } from './components/LocationPanel'
-import { ProductSearchPanel } from './components/ProductSearchPanel'
-import { StoreResultsPanel } from './components/StoreResultsPanel'
 import { SocialAccountPage } from './features/social/SocialAccountPage'
 import { SocialHome } from './features/social/SocialHome'
 import { SocialProfilePage } from './features/social/SocialProfilePage'
 import { SocialSidebar } from './features/social/SocialSidebar'
 import { useSocialState } from './features/social/use-social-state'
-import { useUserLocation } from './hooks/use-user-location'
 import { apiRequest } from './services/http'
-import { getNearbyStores, searchProducts } from './services/location-shopping-api'
 import type { AccountSection, FeedTab, SocialPost, SocialUser } from './features/social/types'
-import type { NearbyStoreResult, ProductSuggestion } from './types/location-shopping'
 
 
 type User = { id: string; name: string; handle: string; bio: string; avatarUrl: string | null }
-type Store = { id: string; name: string; description: string; address: string; city: string; logo: string; accent: string; image: string | null }
+type Store = { id: string; name: string; description: string; address: string; city: string; logo: string; accent: string; image: string | null; productCount: number }
 type Product = { id: string; name: string; category: string; brand: string; storeId: string; referenceAmount: number; referenceUnit: string; image: string | null; price: number; stock: number; calories: number; protein: number; carbs: number; fat: number }
 type Recipe = { id: string; userId: string; storeId: string | null; title: string; description: string; steps: string; image: string | null; servings: number; prepTime: number; difficulty: string; caloriesTotal: number; proteinTotal: number; carbsTotal: number; fatTotal: number; createdAt: string }
 type RecipeForm = { title: string; description: string; steps: string; userId: string; storeId: string; difficulty: string; servings: string; prepTime: string; imageUrl: string; ingredients: Array<{ productId: string; quantity: string; unit: string }> }
@@ -26,7 +20,7 @@ type RecipeIngredientDetail = { product_id: number; name: string; brand: string;
 type RecipeDetail = { id: number; user_id: number; store_id: string | null; title: string; description: string | null; steps: string | null; image_url: string | null; servings: number; prep_time: number; difficulty: string; ingredients: RecipeIngredientDetail[] }
 type ApiBootstrap = {
   users: Array<{ id: number; name: string; handle: string; bio: string | null; avatar_url: string | null }>
-  stores: Array<{ id: string; name: string; description: string | null; address: string | null; city: string; logo: string; accent: string; image_url: string | null }>
+  stores: Array<{ id: string; name: string; description: string | null; address: string | null; city: string; logo: string; accent: string; image_url: string | null; products_count: number | string }>
   products: Array<{ id: number; name: string; category: string; brand: string; store_id: string; reference_amount: number | string; reference_unit: string; image_url: string | null; price: number | string; stock: number; calories: number; protein: number | string; carbs: number | string; fat: number | string }>
   recipes: Array<{ id: number; user_id: number; store_id: string | null; title: string; description: string | null; steps: string | null; image_url: string | null; servings: number; prep_time: number; difficulty: string; calories_total: number | string; protein_total: number | string; carbs_total: number | string; fat_total: number | string; created_at: string }>
 }
@@ -41,13 +35,11 @@ type ProductSortOption = 'recent' | 'name' | 'protein' | 'calories'
 type ExternalProductPreview = { code: string; existing_id: number | null; id?: number; name: string; brand: string; category: string; store: string; image_url: string | null; calories: number; protein: number; carbs: number; fat: number; reference_amount: number; reference_unit: string; status?: 'imported' | 'updated' }
 type OpenFoodFactsSearchResponse = { ok: boolean; query: string; products: ExternalProductPreview[] }
 type OpenFoodFactsImportOneResponse = { ok: boolean; product: ExternalProductPreview & { id: number; status: 'imported' | 'updated' } }
-type MainSection = 'inicio' | 'productos' | 'tiendas' | 'recetas' | 'perfil' | 'cuenta' | 'tiendas-cercanas'
+type MainSection = 'inicio' | 'productos' | 'tiendas' | 'recetas' | 'perfil' | 'cuenta'
 type AppPreferences = {
   activeSection: Exclude<MainSection, 'perfil'>
   accountSection: AccountSection
   feedTab: FeedTab
-  radiusKm: number
-  prioritizeAvailable: boolean
   productSearchTerm: string
   productSort: ProductSortOption
   productStoreFilter: string
@@ -104,12 +96,15 @@ const readStoredTheme = (): ThemeMode => {
 
 const readStoredAuthUser = (): AuthUser | null => {
   if (typeof window === 'undefined') return null
-  window.localStorage.removeItem('nutrisocial-auth-user')
-  const rawValue = window.sessionStorage.getItem('nutrisocial-auth-user')
+  const rawValue = window.localStorage.getItem('nutrisocial-auth-user') ?? window.sessionStorage.getItem('nutrisocial-auth-user')
   if (!rawValue) return null
   try {
-    return JSON.parse(rawValue) as AuthUser
+    const user = JSON.parse(rawValue) as AuthUser
+    window.localStorage.setItem('nutrisocial-auth-user', JSON.stringify(user))
+    window.sessionStorage.removeItem('nutrisocial-auth-user')
+    return user
   } catch {
+    window.localStorage.removeItem('nutrisocial-auth-user')
     window.sessionStorage.removeItem('nutrisocial-auth-user')
     return null
   }
@@ -117,10 +112,12 @@ const readStoredAuthUser = (): AuthUser | null => {
 
 const storeAuthUser = (user: AuthUser | null) => {
   if (!user) {
+    window.localStorage.removeItem('nutrisocial-auth-user')
     window.sessionStorage.removeItem('nutrisocial-auth-user')
     return
   }
-  window.sessionStorage.setItem('nutrisocial-auth-user', JSON.stringify(user))
+  window.localStorage.setItem('nutrisocial-auth-user', JSON.stringify(user))
+  window.sessionStorage.removeItem('nutrisocial-auth-user')
 }
 
 const readRememberedUsername = () => {
@@ -137,18 +134,18 @@ const storeRememberedUsername = (username: string | null) => {
 }
 
 const savedProductsStorageKey = 'nutrisocial-saved-product-ids'
+const savedRecipesStorageKey = 'nutrisocial-saved-recipe-ids'
 const appPreferencesStorageKey = 'nutrisocial-app-preferences'
 const defaultAppPreferences: AppPreferences = {
   activeSection: 'inicio',
   accountSection: 'overview',
   feedTab: 'para-ti',
-  radiusKm: 10,
-  prioritizeAvailable: false,
   productSearchTerm: '',
   productSort: 'recent',
   productStoreFilter: 'all',
   checkedProductIds: [],
 }
+const persistedMainSections = new Set<AppPreferences['activeSection']>(['inicio', 'productos', 'tiendas', 'recetas', 'cuenta'])
 
 const readSavedProductIds = () => {
   if (typeof window === 'undefined') return new Set<string>()
@@ -166,20 +163,36 @@ const storeSavedProductIds = (ids: Set<string>) => {
   window.localStorage.setItem(savedProductsStorageKey, JSON.stringify([...ids]))
 }
 
+const readSavedRecipeIds = () => {
+  if (typeof window === 'undefined') return new Set<string>()
+  try {
+    const rawValue = window.localStorage.getItem(savedRecipesStorageKey)
+    const parsed = rawValue ? JSON.parse(rawValue) : []
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : [])
+  } catch {
+    return new Set<string>()
+  }
+}
+
+const storeSavedRecipeIds = (ids: Set<string>) => {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(savedRecipesStorageKey, JSON.stringify([...ids]))
+}
+
 const readAppPreferences = (): AppPreferences => {
   if (typeof window === 'undefined') return defaultAppPreferences
   try {
     const rawValue = window.localStorage.getItem(appPreferencesStorageKey)
     if (!rawValue) return defaultAppPreferences
     const parsed = JSON.parse(rawValue) as Partial<AppPreferences>
-    const nextSection = parsed.activeSection ?? defaultAppPreferences.activeSection
+    const nextSection = parsed.activeSection && persistedMainSections.has(parsed.activeSection)
+      ? parsed.activeSection
+      : defaultAppPreferences.activeSection
 
     return {
       activeSection: nextSection,
       accountSection: parsed.accountSection ?? defaultAppPreferences.accountSection,
       feedTab: parsed.feedTab ?? defaultAppPreferences.feedTab,
-      radiusKm: typeof parsed.radiusKm === 'number' ? Math.min(50, Math.max(1, parsed.radiusKm)) : defaultAppPreferences.radiusKm,
-      prioritizeAvailable: Boolean(parsed.prioritizeAvailable),
       productSearchTerm: parsed.productSearchTerm ?? defaultAppPreferences.productSearchTerm,
       productSort: parsed.productSort ?? defaultAppPreferences.productSort,
       productStoreFilter: parsed.productStoreFilter ?? defaultAppPreferences.productStoreFilter,
@@ -197,12 +210,17 @@ const storeAppPreferences = (preferences: AppPreferences) => {
 
 const socialUserId = (userId: string | number) => `user-${userId}`
 const defaultAvatarUrl = '/app-logo.png'
+const initialAvatarUrl = (value: string) => {
+  const initial = [...value.trim()].find((char) => /[a-z0-9]/i.test(char))?.toUpperCase() || 'U'
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160"><rect width="160" height="160" rx="80" fill="#0d8b83"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="Arial,sans-serif" font-size="76" font-weight="700" fill="white">${initial}</text></svg>`
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`
+}
 
 const userToSocialUser = (user: User): SocialUser => ({
   id: socialUserId(user.id),
   username: user.handle,
   displayName: user.name,
-  avatarUrl: user.avatarUrl || defaultAvatarUrl,
+  avatarUrl: user.avatarUrl || initialAvatarUrl(user.handle || user.name),
   bio: user.bio || 'Perfil de NutriSocial.',
   followersCount: 0,
   followingCount: 0,
@@ -217,7 +235,7 @@ const authUserToSocialUser = (authUser: AuthUser): SocialUser => {
     id: socialUserId(authUser.id),
     displayName: authUser.name,
     username: authUser.handle,
-    avatarUrl: authUser.avatar_url || defaultAvatarUrl,
+    avatarUrl: authUser.avatar_url || initialAvatarUrl(authUser.handle || authUser.name),
     bio: 'Perfil de NutriSocial.',
     followersCount: 0,
     followingCount: 0,
@@ -249,7 +267,7 @@ const recipeToSocialPost = (recipe: Recipe): SocialPost => ({
     fat: Number(recipe.fatTotal.toFixed(1)),
     ingredients: [],
     steps: recipe.steps
-      ? recipe.steps.split(/\r?\n|\. /).map((step) => step.trim()).filter(Boolean)
+      ? recipe.steps.split(/\r?\n/).map((step) => step.replace(/^\d+[\s.)-]+/, '').trim()).filter(Boolean)
       : ['Sin pasos detallados.'],
   },
 })
@@ -311,20 +329,7 @@ function App() {
   const preferences = useMemo(readAppPreferences, [])
   const navigate = useNavigate()
   const locationRoute = useLocation()
-  const { permission, location, locationLabel, errorMessage: locationError, requestLocation } = useUserLocation()
 
-  const [query, setQuery] = useState('')
-  const [selectedProduct, setSelectedProduct] = useState<ProductSuggestion | null>(null)
-  const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([])
-  const [searchLoading, setSearchLoading] = useState(false)
-  const [searchError, setSearchError] = useState<string | null>(null)
-
-  const [radiusKm, setRadiusKm] = useState(preferences.radiusKm)
-  const [nearbyStores, setNearbyStores] = useState<NearbyStoreResult[]>([])
-  const [nearbyLoading, setNearbyLoading] = useState(false)
-  const [nearbyError, setNearbyError] = useState<string | null>(null)
-  const [hasSearched, setHasSearched] = useState(false)
-  const [prioritizeAvailable, setPrioritizeAvailable] = useState(preferences.prioritizeAvailable)
   const [activeSection, setActiveSection] = useState<MainSection>(preferences.activeSection)
   const [accountSection, setAccountSection] = useState<AccountSection>(preferences.accountSection)
   const [feedTab, setFeedTab] = useState<FeedTab>(preferences.feedTab)
@@ -341,7 +346,9 @@ function App() {
   const [externalImportSummary, setExternalImportSummary] = useState<string | null>(null)
   const [externalImportResults, setExternalImportResults] = useState<ExternalProductPreview[]>([])
   const [addingExternalProductCode, setAddingExternalProductCode] = useState<string | null>(null)
+  const [storeSyncLoading, setStoreSyncLoading] = useState(false)
   const [savedProductIds, setSavedProductIds] = useState<Set<string>>(() => readSavedProductIds())
+  const [savedRecipeIds, setSavedRecipeIds] = useState<Set<string>>(() => readSavedRecipeIds())
   const [checkedProductIds, setCheckedProductIds] = useState<Set<string>>(() => new Set(preferences.checkedProductIds))
   const [productSearchTerm, setProductSearchTerm] = useState(preferences.productSearchTerm)
   const [productSort, setProductSort] = useState<ProductSortOption>(preferences.productSort)
@@ -394,15 +401,17 @@ function App() {
     followingUsers,
     followingSet,
     requestSet,
+    likedPostSet,
     followUser,
     sendFriendRequest,
     addComment,
+    toggleLike,
   } = useSocialState(effectiveCurrentUser.id, effectiveUsersById)
 
   const loadCrudData = useCallback(async () => {
     const data = await fetchJson<ApiBootstrap>('/api/bootstrap')
     setUsers(data.users.map((u) => ({ id: String(u.id), name: u.name, handle: u.handle, bio: u.bio ?? '', avatarUrl: u.avatar_url })))
-    setStoresCrud(data.stores.map((s) => ({ id: s.id, name: s.name, description: s.description ?? '', address: s.address ?? '', city: s.city, logo: s.logo, accent: s.accent, image: s.image_url })))
+    setStoresCrud(data.stores.map((s) => ({ id: s.id, name: s.name, description: s.description ?? '', address: s.address ?? '', city: s.city, logo: s.logo, accent: s.accent, image: s.image_url, productCount: Number(s.products_count ?? 0) })))
     setProductsCrud(data.products.map((p) => ({ id: String(p.id), name: p.name, category: p.category, brand: p.brand, storeId: p.store_id, referenceAmount: Number(p.reference_amount ?? 100), referenceUnit: p.reference_unit || 'g', image: p.image_url, price: Number(p.price ?? 0), stock: Number(p.stock ?? 0), calories: Number(p.calories ?? 0), protein: Number(p.protein ?? 0), carbs: Number(p.carbs ?? 0), fat: Number(p.fat ?? 0) })))
     setRecipesCrud(data.recipes.map((r) => ({ id: String(r.id), userId: String(r.user_id), storeId: r.store_id, title: r.title, description: r.description ?? '', steps: r.steps ?? '', image: r.image_url, servings: Number(r.servings ?? 1), prepTime: Number(r.prep_time ?? 0), difficulty: r.difficulty, caloriesTotal: Number(r.calories_total ?? 0), proteinTotal: Number(r.protein_total ?? 0), carbsTotal: Number(r.carbs_total ?? 0), fatTotal: Number(r.fat_total ?? 0), createdAt: r.created_at })))
   }, [])
@@ -426,146 +435,16 @@ function App() {
       activeSection: nextActiveSection,
       accountSection,
       feedTab,
-      radiusKm,
-      prioritizeAvailable,
       productSearchTerm,
       productSort,
       productStoreFilter,
       checkedProductIds: [...checkedProductIds],
     })
-  }, [accountSection, activeSection, checkedProductIds, feedTab, prioritizeAvailable, productSearchTerm, productSort, productStoreFilter, radiusKm])
+  }, [accountSection, activeSection, checkedProductIds, feedTab, productSearchTerm, productSort, productStoreFilter])
 
   useEffect(() => {
     setRecipeForm((p) => ({ ...p, userId: p.userId || (authUser ? String(authUser.id) : users[0]?.id || '') }))
   }, [authUser, users])
-
-  useEffect(() => {
-    const normalized = query.trim()
-    if (normalized.length < 2) {
-      setSuggestions([])
-      setSearchLoading(false)
-      setSearchError(null)
-      return
-    }
-
-    const controller = new AbortController()
-    const timer = setTimeout(() => {
-      setSearchLoading(true)
-      setSearchError(null)
-
-      searchProducts(normalized, controller.signal)
-        .then((items) => {
-          setSuggestions(items)
-        })
-        .catch((error: unknown) => {
-          if (controller.signal.aborted) return
-          setSearchError(error instanceof Error ? error.message : 'No se pudieron cargar productos')
-          setSuggestions([])
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) {
-            setSearchLoading(false)
-          }
-        })
-    }, 280)
-
-    return () => {
-      controller.abort()
-      clearTimeout(timer)
-    }
-  }, [query])
-
-  function handleSelectProduct(product: ProductSuggestion) {
-    setSelectedProduct(product)
-    setQuery(product.name)
-    setSuggestions([])
-  }
-
-  function handleQueryChange(nextValue: string) {
-    setQuery(nextValue)
-    if (!selectedProduct || nextValue.trim() === selectedProduct.name) return
-    setSelectedProduct(null)
-  }
-
-  async function handleSearchNearbyStores() {
-    setHasSearched(true)
-
-    if (!selectedProduct) {
-      setNearbyStores([])
-      setNearbyError('Selecciona un producto de la base de datos antes de buscar tiendas.')
-      return
-    }
-
-    if (!location) {
-      setNearbyStores([])
-      setNearbyError('Necesitas activar tu ubicacion para calcular tiendas cercanas.')
-      return
-    }
-
-    setNearbyLoading(true)
-    setNearbyError(null)
-
-    try {
-      const response = await getNearbyStores({
-        productId: selectedProduct.id,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        radiusKm,
-      })
-
-      setNearbyStores(response.stores)
-
-      if (!response.product) {
-        setNearbyError('El producto seleccionado ya no existe en base de datos.')
-        return
-      }
-
-      if (response.stores.length === 0) {
-        setNearbyError(null)
-      }
-    } catch (error) {
-      setNearbyStores([])
-      setNearbyError(error instanceof Error ? error.message : 'No se pudieron cargar tiendas cercanas')
-    } finally {
-      setNearbyLoading(false)
-    }
-  }
-
-  const visibleStores = useMemo(() => {
-    const items = [...nearbyStores]
-    if (!prioritizeAvailable) {
-      return items.sort((a, b) => a.distance_km - b.distance_km)
-    }
-
-    const weight: Record<NearbyStoreResult['listing']['availability_status'], number> = {
-      in_stock: 0,
-      low_stock: 1,
-      unknown: 2,
-      out_of_stock: 3,
-    }
-
-    return items.sort((a, b) => {
-      const availabilityDiff = weight[a.listing.availability_status] - weight[b.listing.availability_status]
-      if (availabilityDiff !== 0) return availabilityDiff
-      return a.distance_km - b.distance_km
-    })
-  }, [nearbyStores, prioritizeAvailable])
-  const nearbySummary = useMemo(() => {
-    if (visibleStores.length === 0) return null
-    const cheapestStore = visibleStores
-      .filter((store) => store.listing.price !== null)
-      .sort((a, b) => Number(a.listing.price) - Number(b.listing.price))[0] ?? null
-    const bestAvailability = visibleStores.find((store) => store.listing.availability_status === 'in_stock')
-      ?? visibleStores.find((store) => store.listing.availability_status === 'low_stock')
-      ?? visibleStores[0]
-
-    return {
-      total: visibleStores.length,
-      closestDistanceKm: visibleStores[0]?.distance_km ?? 0,
-      cheapestStore,
-      bestAvailability,
-    }
-  }, [visibleStores])
 
   const storeById = useMemo(() => new Map(storesCrud.map((s) => [s.id, s])), [storesCrud])
   const productById = useMemo(() => new Map(productsCrud.map((product) => [product.id, product])), [productsCrud])
@@ -613,6 +492,10 @@ function App() {
   const checkedSavedProducts = useMemo(
     () => savedProducts.filter((product) => checkedProductIds.has(product.id)),
     [checkedProductIds, savedProducts],
+  )
+  const checkedSavedProductIds = useMemo(
+    () => new Set([...checkedProductIds].filter((productId) => savedProductIds.has(productId))),
+    [checkedProductIds, savedProductIds],
   )
   const savedProductsTotalCalories = useMemo(
     () => savedProducts.reduce((total, product) => total + product.calories, 0),
@@ -818,34 +701,23 @@ function App() {
   }
 
   function clearCheckedProducts() {
-    setCheckedProductIds((current) => {
+    const productIdsToRemove = checkedSavedProductIds.size > 0
+      ? checkedSavedProductIds
+      : new Set(savedProducts.map((product) => product.id))
+
+    if (productIdsToRemove.size === 0) return
+
+    setSavedProductIds((current) => {
       const next = new Set(current)
-      savedProducts.forEach((product) => next.delete(product.id))
+      productIdsToRemove.forEach((productId) => next.delete(productId))
+      storeSavedProductIds(next)
       return next
     })
-  }
-
-  async function copySavedProductsSummary() {
-    if (savedProducts.length === 0) {
-      setCrudMessage('Añade productos a tu lista antes de exportarla.')
-      return
-    }
-
-    const lines = [
-      'Lista de compra NutriSocial',
-      ...savedProducts.map((product) => {
-        const store = productStoreLabel(storeById.get(product.storeId))
-        const checkedLabel = checkedProductIds.has(product.id) ? ' [comprado]' : ''
-        return `- ${product.name} · ${product.brand || 'Sin marca'} · ${store}${checkedLabel}`
-      }),
-    ]
-
-    try {
-      await navigator.clipboard.writeText(lines.join('\n'))
-      setCrudMessage('Lista de compra copiada al portapapeles.')
-    } catch {
-      setCrudMessage('No se pudo copiar la lista al portapapeles.')
-    }
+    setCheckedProductIds((current) => {
+      const next = new Set(current)
+      productIdsToRemove.forEach((productId) => next.delete(productId))
+      return next
+    })
   }
 
   async function syncOpenFoodFactsProducts() {
@@ -871,6 +743,22 @@ function App() {
       setCrudMessage((err as Error).message)
     } finally {
       setExternalImportLoading(false)
+    }
+  }
+
+  async function syncOpenFoodFactsStores() {
+    setStoreSyncLoading(true)
+    setCrudMessage('Sincronizando productos por tienda desde Open Food Facts...')
+    try {
+      const result = await postJson('/api/open-food-facts/import-stores', {
+        per_store: 80,
+      }) as { imported: number; updated: number; storesTouched: number }
+      setCrudMessage(`Sincronizacion completada: ${result.imported} productos nuevos, ${result.updated} actualizados y ${result.storesTouched} tiendas con productos.`)
+      await loadCrudData()
+    } catch (err) {
+      setCrudMessage((err as Error).message)
+    } finally {
+      setStoreSyncLoading(false)
     }
   }
 
@@ -962,6 +850,11 @@ function App() {
   const profileMatch = locationRoute.pathname.match(/^\/perfil\/([^/]+)$/)
   const profileUserId = profileMatch ? decodeURIComponent(profileMatch[1]) : null
   const isProfileRoute = profileUserId !== null
+  const visibleActiveSection: MainSection = isProfileRoute
+    ? 'perfil'
+    : activeSection === 'perfil'
+      ? 'inicio'
+      : activeSection
   const feedPosts = useMemo(
     () => feedTab === 'para-ti'
       ? socialPosts
@@ -972,28 +865,41 @@ function App() {
     () => (profileUserId ? socialPosts.filter((post) => post.authorId === profileUserId) : []),
     [profileUserId, socialPosts],
   )
-  const savedPosts = useMemo<SocialPost[]>(() => [], [])
+  const savedPosts = useMemo(
+    () => socialPosts.filter((post) => savedRecipeIds.has(post.id.replace(/^recipe-/, ''))),
+    [savedRecipeIds, socialPosts],
+  )
+  const savedRecipes = useMemo(
+    () => recipesCrud.filter((recipe) => savedRecipeIds.has(recipe.id)),
+    [recipesCrud, savedRecipeIds],
+  )
   const profileUser = profileUserId ? effectiveUsersById[profileUserId] ?? null : null
 
-  useEffect(() => {
-    if (isProfileRoute && activeSection !== 'perfil') {
-      setActiveSection('perfil')
-      return
-    }
-    if (!isProfileRoute && activeSection === 'perfil') {
-      setActiveSection('inicio')
-    }
-  }, [activeSection, isProfileRoute])
+  function toggleSavedRecipe(recipeId: string) {
+    setSavedRecipeIds((current) => {
+      const next = new Set(current)
+      if (next.has(recipeId)) next.delete(recipeId)
+      else next.add(recipeId)
+      storeSavedRecipeIds(next)
+      return next
+    })
+  }
 
   const openSocialProfile = useCallback((userId: string) => {
+    const profilePath = `/perfil/${userId}`
     setActiveSection('perfil')
-    navigate(`/perfil/${userId}`)
-  }, [navigate])
+    if (locationRoute.pathname !== profilePath) {
+      navigate(profilePath)
+    }
+  }, [locationRoute.pathname, navigate])
 
   const handleSectionSelect = useCallback((section: typeof activeSection) => {
     if (section === 'perfil') {
+      const profilePath = `/perfil/${effectiveCurrentUser.id}`
       setActiveSection('perfil')
-      navigate(`/perfil/${effectiveCurrentUser.id}`)
+      if (locationRoute.pathname !== profilePath) {
+        navigate(profilePath)
+      }
       return
     }
 
@@ -1022,15 +928,13 @@ function App() {
 
   const headerDescription = isProfileRoute
     ? 'Perfil de usuario en vista independiente'
-    : activeSection === 'inicio'
-      ? (feedTab === 'para-ti'
-          ? 'Feed social general con publicaciones de todos los perfiles mock'
-          : 'Publicaciones solo de perfiles que sigues en estado local')
-      : activeSection === 'tiendas-cercanas'
-        ? 'Flujo de compra por proximidad en tiempo real'
-        : activeSection === 'cuenta'
+      : visibleActiveSection === 'inicio'
+        ? (feedTab === 'para-ti'
+            ? 'Feed social general con publicaciones de perfiles creados'
+            : 'Publicaciones solo de perfiles que sigues en estado local')
+        : visibleActiveSection === 'cuenta'
           ? 'Zona personal para gestionar tu perfil y preferencias'
-        : `${labelForSection(activeSection)} en la estructura principal`
+        : `${labelForSection(visibleActiveSection)} en la estructura principal`
 
   const renderProductCard = (p: Product, action: 'add' | 'remove') => {
     const storeLabel = productStoreLabel(storeById.get(p.storeId))
@@ -1141,12 +1045,11 @@ function App() {
             { id: 'recetas', label: 'Recetas' },
             { id: 'perfil', label: 'Perfil' },
             { id: 'cuenta', label: 'Mi cuenta' },
-            { id: 'tiendas-cercanas', label: 'Tiendas cercanas' },
           ].map((item) => (
             <button
               key={item.id}
               type="button"
-              className={`side-nav-item ${activeSection === item.id ? 'active' : ''}`}
+              className={`side-nav-item ${visibleActiveSection === item.id ? 'active' : ''}`}
               onClick={() => handleSectionSelect(item.id as typeof activeSection)}
             >
               {item.label}
@@ -1157,7 +1060,7 @@ function App() {
 
       <main className="main-feed">
         <header className="feed-header card-surface">
-          {!isProfileRoute && activeSection === 'inicio' && (
+          {!isProfileRoute && visibleActiveSection === 'inicio' && (
             <div className="feed-tabs">
               <button
                 type="button"
@@ -1187,12 +1090,16 @@ function App() {
               commentsByPostId={commentsByPostId}
               currentUser={effectiveCurrentUser}
               usersById={effectiveUsersById}
+              savedRecipeIds={savedRecipeIds}
+              likedPostIds={likedPostSet}
               isFollowing={followingSet.has(profileUser.id)}
               hasRequest={requestSet.has(profileUser.id)}
               onOpenProfile={openSocialProfile}
               onFollowUser={followUser}
               onSendFriendRequest={sendFriendRequest}
               onAddComment={addComment}
+              onToggleLike={toggleLike}
+              onToggleSaveRecipe={toggleSavedRecipe}
             />
           ) : (
             <section className="panel card-surface">
@@ -1203,80 +1110,38 @@ function App() {
               <p className="muted">No existe un perfil para la ruta solicitada.</p>
             </section>
           )
-        ) : activeSection === 'inicio' ? (
+        ) : visibleActiveSection === 'inicio' ? (
           <SocialHome
             feedTab={feedTab}
             posts={feedPosts}
             commentsByPostId={commentsByPostId}
             currentUser={effectiveCurrentUser}
-          usersById={effectiveUsersById}
+            usersById={effectiveUsersById}
+            savedRecipeIds={savedRecipeIds}
+            likedPostIds={likedPostSet}
             onOpenProfile={openSocialProfile}
             onAddComment={addComment}
+            onToggleLike={toggleLike}
+            onToggleSaveRecipe={toggleSavedRecipe}
           />
-        ) : activeSection === 'cuenta' ? (
+        ) : visibleActiveSection === 'cuenta' ? (
           <SocialAccountPage
             currentUser={effectiveCurrentUser}
             accountSection={accountSection}
             savedPosts={savedPosts}
             commentsByPostId={commentsByPostId}
             usersById={effectiveUsersById}
+            savedRecipeIds={savedRecipeIds}
+            likedPostIds={likedPostSet}
             isDarkMode={themeMode === 'dark'}
             onOpenProfile={openSocialProfile}
             onAddComment={addComment}
+            onToggleLike={toggleLike}
+            onToggleSaveRecipe={toggleSavedRecipe}
             onSelectAccountSection={openAccountSection}
             onToggleDarkMode={(enabled) => setThemeMode(enabled ? 'dark' : 'light')}
           />
-        ) : activeSection === 'tiendas-cercanas' ? (
-          <>
-            <section className="composer card-surface">
-              <LocationPanel
-                permission={permission}
-                label={locationLabel}
-                errorMessage={locationError}
-                onRequestLocation={requestLocation}
-              />
-
-              <ProductSearchPanel
-                query={query}
-                selectedProduct={selectedProduct}
-                suggestions={suggestions}
-                loading={searchLoading}
-                errorMessage={searchError}
-                onQueryChange={handleQueryChange}
-                onSelect={handleSelectProduct}
-              />
-
-              <section className="action-bar card-surface">
-                <div className="range-block">
-                  <label htmlFor="radius">Radio de busqueda: <strong>{radiusKm} km</strong></label>
-                  <input
-                    id="radius"
-                    type="range"
-                    min={1}
-                    max={50}
-                    value={radiusKm}
-                    onChange={(event) => setRadiusKm(Number(event.target.value))}
-                  />
-                </div>
-
-                <button className="primary-btn" type="button" onClick={handleSearchNearbyStores} disabled={nearbyLoading}>
-                  {nearbyLoading ? 'Buscando tiendas...' : 'Buscar tiendas cercanas'}
-                </button>
-              </section>
-            </section>
-
-            <StoreResultsPanel
-              loading={nearbyLoading}
-              errorMessage={nearbyError}
-              stores={visibleStores}
-              radiusKm={radiusKm}
-              hasSearched={hasSearched}
-              prioritizeAvailable={prioritizeAvailable}
-              summary={nearbySummary}
-              onTogglePrioritizeAvailable={() => setPrioritizeAvailable((value) => !value)}
-            />
-          </>
-        ) : activeSection === 'productos' ? (
+        ) : visibleActiveSection === 'productos' ? (
           <section className="panel card-surface product-panel">
             <div className="recipes-toolbar product-toolbar">
               <div className="panel-headline">
@@ -1296,11 +1161,8 @@ function App() {
                     <h3>Gestiona y reutiliza tus productos guardados</h3>
                   </div>
                   <div className="crud-actions">
-                    <button type="button" className="ghost-btn" onClick={clearCheckedProducts} disabled={checkedSavedProducts.length === 0}>
-                      Limpiar marcados
-                    </button>
-                    <button type="button" className="secondary-btn" onClick={() => void copySavedProductsSummary()}>
-                      Copiar lista
+                    <button type="button" className="ghost-btn" onClick={clearCheckedProducts} disabled={savedProducts.length === 0}>
+                      {checkedSavedProductIds.size > 0 ? 'Limpiar marcados' : 'Vaciar lista'}
                     </button>
                   </div>
                 </div>
@@ -1360,25 +1222,6 @@ function App() {
               <section className="product-discovery-panel">
                 <div className="section-inline-head">
                   <div>
-                    <h3>Descubre productos de la base de datos</h3>
-                    <p className="muted">Una muestra útil según tus filtros. Añade solo los que quieras conservar.</p>
-                  </div>
-                </div>
-                {discoveryProducts.length === 0 ? (
-                  <article className="recipe-empty">
-                    <h3>No hay productos disponibles con esos filtros</h3>
-                    <p>Ajusta la búsqueda, la tienda o el criterio de ordenación.</p>
-                  </article>
-                ) : (
-                  <div className="product-card-grid">
-                    {discoveryProducts.map((p) => renderProductCard(p, 'add'))}
-                  </div>
-                )}
-              </section>
-
-              <section className="product-discovery-panel">
-                <div className="section-inline-head">
-                  <div>
                     <h3>Mi lista</h3>
                     <p className="muted">Aquí se quedan los productos que marques como favoritos.</p>
                   </div>
@@ -1394,13 +1237,37 @@ function App() {
                   </div>
                 )}
               </section>
+
+              <section className="product-discovery-panel">
+                <div className="section-inline-head">
+                  <div>
+                    <h3>Descubre productos de la base de datos</h3>
+                    <p className="muted">Una muestra útil según tus filtros. Añade solo los que quieras conservar.</p>
+                  </div>
+                </div>
+                {discoveryProducts.length === 0 ? (
+                  <article className="recipe-empty">
+                    <h3>No hay productos disponibles con esos filtros</h3>
+                    <p>Ajusta la búsqueda, la tienda o el criterio de ordenación.</p>
+                  </article>
+                ) : (
+                  <div className="product-card-grid">
+                    {discoveryProducts.map((p) => renderProductCard(p, 'add'))}
+                  </div>
+                )}
+              </section>
             </div>
           </section>
-        ) : activeSection === 'tiendas' ? (
+        ) : visibleActiveSection === 'tiendas' ? (
           <section className="panel card-surface">
-            <div className="panel-headline">
-              <p className="eyebrow">Tiendas</p>
-              <h2>Tiendas detectadas</h2>
+            <div className="recipes-toolbar">
+              <div className="panel-headline">
+                <p className="eyebrow">Tiendas</p>
+                <h2>Tiendas detectadas</h2>
+              </div>
+              <button type="button" className="primary-btn" onClick={() => void syncOpenFoodFactsStores()} disabled={storeSyncLoading}>
+                {storeSyncLoading ? 'Sincronizando...' : 'Sincronizar productos'}
+              </button>
             </div>
             <div className="crud-list">
               {visibleStoresCrud.map((s) => {
@@ -1415,14 +1282,14 @@ function App() {
                     ) : null}
                     <div>
                       <strong>{normalizeDisplayStoreName(s.name)}</strong>
-                      <p className="muted">{productsCrud.filter((product) => product.storeId === s.id).length} productos como tienda principal</p>
+                      <p className="muted">{s.productCount} productos detectados</p>
                     </div>
                   </article>
                 )
               })}
             </div>
           </section>
-        ) : activeSection === 'recetas' ? (
+        ) : visibleActiveSection === 'recetas' ? (
           <section className="panel card-surface">
             <div className="recipes-toolbar">
               <div className="panel-headline">
@@ -1435,11 +1302,12 @@ function App() {
             </div>
 
             <div className="recipe-list">
-              {recipesCrud.length === 0 ? (
+              {savedRecipes.length === 0 ? (
                 <article className="recipe-empty">
-                  <h3>Aún no hay ninguna receta creada</h3>
+                  <h3>Aún no has guardado ninguna receta</h3>
+                  <p>Guarda una receta desde el feed social para verla aquí.</p>
                 </article>
-              ) : recipesCrud.map((recipe) => (
+              ) : savedRecipes.map((recipe) => (
                 <article key={recipe.id} className="recipe-list-card">
                   {recipe.image ? <img src={recipe.image} alt={recipe.title} /> : <div className="recipe-image-placeholder" />}
                   <button type="button" className="recipe-list-body" onClick={() => void openRecipeDetail(recipe.id)}>
@@ -1460,7 +1328,7 @@ function App() {
           <section className="panel card-surface">
             <div className="panel-headline">
               <p className="eyebrow">Seccion</p>
-              <h2>{labelForSection(activeSection)}</h2>
+              <h2>{labelForSection(visibleActiveSection)}</h2>
             </div>
             <p className="muted">Selecciona Productos, Tiendas o Recetas para usar Añadir, Editar y Eliminar.</p>
           </section>
@@ -1881,7 +1749,7 @@ function AuthScreen({
               <input
                 value={name}
                 onChange={(event) => onNameChange(event.target.value)}
-                placeholder="Fernando RM"
+                placeholder="Añade un nombre para su perfil"
                 autoComplete="name"
                 required
               />
@@ -1893,7 +1761,7 @@ function AuthScreen({
               <input
                 value={username}
                 onChange={(event) => onUsernameChange(event.target.value)}
-                placeholder="tuusuario"
+                placeholder="Añada un nombre de usuario"
                 autoComplete="username"
                 required
               />
@@ -1904,6 +1772,7 @@ function AuthScreen({
             <input
               type="password"
               value={password}
+              placeholder="Añada una contraseña"
               onChange={(event) => onPasswordChange(event.target.value)}
               autoComplete={isRegister ? 'new-password' : 'current-password'}
               required
@@ -1916,6 +1785,7 @@ function AuthScreen({
               <input
                 type="password"
                 value={confirmPassword}
+                placeholder="Confirme su contraseña"
                 onChange={(event) => onConfirmPasswordChange(event.target.value)}
                 autoComplete="new-password"
                 required
@@ -1951,7 +1821,7 @@ function AuthScreen({
   )
 }
 
-function labelForSection(section: 'inicio' | 'productos' | 'tiendas' | 'recetas' | 'perfil' | 'cuenta' | 'tiendas-cercanas'): string {
+function labelForSection(section: MainSection): string {
   switch (section) {
     case 'inicio':
       return 'Inicio'
@@ -1965,8 +1835,6 @@ function labelForSection(section: 'inicio' | 'productos' | 'tiendas' | 'recetas'
       return 'Perfil'
     case 'cuenta':
       return 'Mi cuenta'
-    default:
-      return 'Tiendas cercanas'
   }
 }
 

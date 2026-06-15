@@ -122,11 +122,21 @@
   color: #547284;
 }
 
+.social-post-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+}
+
 .social-avatar {
   width: 42px;
   height: 42px;
+  aspect-ratio: 1;
+  display: block;
   border-radius: 50%;
   object-fit: cover;
+  object-position: center;
   border: 2px solid #d9e8f0;
 }
 
@@ -136,6 +146,7 @@
 }
 
 .social-expand-btn,
+.social-save-btn,
 .social-post-actions button,
 .social-action-btn,
 .social-comment-form-actions button {
@@ -153,7 +164,25 @@
   padding: 0.48rem 0.72rem;
 }
 
+.social-save-btn {
+  width: 2.45rem;
+  height: 2.45rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.social-save-btn.is-saved {
+  border-color: #0d8b83;
+  background: #e7f8f5;
+  color: #0d8b83;
+}
+
 .social-expand-btn:hover,
+.social-save-btn:hover,
 .social-post-actions button:hover,
 .social-action-btn:hover,
 .social-comment-form-actions button:hover {
@@ -232,6 +261,12 @@
 
 .social-post-actions button {
   padding: 0.42rem 0.56rem;
+}
+
+.social-post-actions button.is-liked {
+  border-color: #0d8b83;
+  background: #0d8b83;
+  color: #ffffff;
 }
 
 .social-post-detail {
@@ -757,6 +792,12 @@
   gap: 0;
 }
 
+.social-account-shortcuts,
+.social-account-settings-grid,
+.social-account-preferences {
+  gap: 1rem;
+}
+
 .social-account-link,
 .social-account-shortcut {
   width: 100%;
@@ -922,22 +963,158 @@
   gap: 0.28rem;
 }
 
-.social-account-setting-card span,
+.social-account-setting-card button,
 .social-account-preference-row span {
+  width: fit-content;
+  border: 0;
+  background: transparent;
   color: #0d726c;
   font-weight: 700;
   font-size: 0.86rem;
+  padding: 0;
+  cursor: pointer;
+}
+
+.social-account-setting-card button:hover {
+  text-decoration: underline;
+}
+
+.social-settings-message {
+  margin: 0;
+  color: #0d726c;
+  font-weight: 700;
+}
+
+.social-settings-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(8, 23, 33, 0.45);
+}
+
+.social-settings-modal {
+  width: min(520px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  border: 1px solid #c8ddea;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(8, 31, 46, 0.24);
+  padding: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.social-settings-modal-head,
+.social-settings-modal-actions,
+.social-settings-toggle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.social-settings-modal-head h3,
+.social-settings-modal-head p {
+  margin: 0;
+}
+
+.social-settings-modal-close {
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 1px solid #c7dbe7;
+  border-radius: 999px;
+  background: #f3fbff;
+  color: #1e4f64;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.social-settings-form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.social-settings-form label:not(.social-settings-toggle) {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.social-settings-form input:not([type='checkbox']),
+.social-settings-form textarea {
+  width: 100%;
+  border: 1px solid #abc8d8;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  color: var(--text);
+  padding: 0.58rem 0.68rem;
+  font: inherit;
+}
+
+.social-settings-toggle {
+  align-items: center;
+  border: 1px solid #d9e7ef;
+  border-radius: 0.9rem;
+  padding: 0.75rem;
+  background: #fbfdff;
+}
+
+.social-settings-toggle span {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.social-settings-toggle small {
+  color: #547284;
+}
+
+.social-settings-toggle input {
+  width: 1.2rem;
+  height: 1.2rem;
+  accent-color: #0d8b83;
+}
+
+.social-settings-modal-actions {
+  justify-content: flex-end;
+}
+
+.social-settings-modal-actions button {
+  border: 1px solid #c7dbe7;
+  border-radius: 0.72rem;
+  background: #f3fbff;
+  color: #1e4f64;
+  font-weight: 700;
+  padding: 0.52rem 0.8rem;
+  cursor: pointer;
+}
+
+.social-settings-modal-actions button[type='submit'] {
+  border-color: #0d8b83;
+  background: #0d8b83;
+  color: #ffffff;
 }
 
 .social-account-preference-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0.8rem;
+  gap: 1.2rem;
+  padding: 1rem;
+}
+
+.social-account-preference-row > div {
+  min-width: 0;
 }
 
 .theme-switch {
   flex: 0 0 auto;
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
@@ -948,23 +1125,37 @@
 
 .theme-switch input {
   position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
   opacity: 0;
-  pointer-events: none;
+  cursor: pointer;
 }
 
 .theme-switch-track {
-  width: 3.25rem;
-  height: 1.75rem;
+  position: relative;
+  width: 3.5rem;
+  height: 1.95rem;
   border: 1px solid #b9d2df;
   border-radius: 999px;
-  padding: 0.18rem;
+  display: block;
   background: linear-gradient(180deg, #f6fbff, #e7f3fa);
   box-shadow: inset 0 1px 3px rgba(13, 41, 58, 0.12);
+  transition: border-color 180ms ease, background 180ms ease;
+}
+
+.theme-switch-track::before,
+.theme-switch-track::after {
+  content: none;
 }
 
 .theme-switch-thumb {
-  width: 1.28rem;
-  height: 1.28rem;
+  position: absolute;
+  top: 0.22rem;
+  left: 0.22rem;
+  width: 1.45rem;
+  height: 1.45rem;
   border-radius: 50%;
   display: block;
   background: #ffffff;
@@ -975,12 +1166,20 @@
 
 .theme-switch input:checked + .theme-switch-track {
   border-color: #1aa99d;
-  background: linear-gradient(145deg, #0f8b84, #0d726c);
+  background: linear-gradient(145deg, #102f3b, #0d726c);
 }
 
 .theme-switch input:checked + .theme-switch-track .theme-switch-thumb {
   background: #dffdf9;
-  transform: translateX(1.46rem);
+  transform: translateX(1.55rem);
+}
+
+.theme-switch input:checked + .theme-switch-track::before {
+  content: none;
+}
+
+.theme-switch input:checked + .theme-switch-track::after {
+  content: none;
 }
 
 .theme-switch input:focus-visible + .theme-switch-track {
@@ -992,6 +1191,7 @@
   min-width: 3.4rem;
   color: #0d726c;
   font-size: 0.86rem;
+  text-align: left;
 }
 
 .social-action-btn {
@@ -1195,6 +1395,8 @@
 .app-shell[data-theme='dark'] .social-account-summary article,
 .app-shell[data-theme='dark'] .social-account-setting-card,
 .app-shell[data-theme='dark'] .social-account-preference-row,
+.app-shell[data-theme='dark'] .social-settings-modal,
+.app-shell[data-theme='dark'] .social-settings-toggle,
 .app-shell[data-theme='dark'] .social-following-list li button,
 .app-shell[data-theme='dark'] .social-user-card {
   border-color: var(--line);
@@ -1299,6 +1501,7 @@
 }
 
 .app-shell[data-theme='dark'] .social-expand-btn,
+.app-shell[data-theme='dark'] .social-save-btn,
 .app-shell[data-theme='dark'] .social-post-actions button,
 .app-shell[data-theme='dark'] .social-action-btn,
 .app-shell[data-theme='dark'] .social-comment-form-actions button,
@@ -1306,6 +1509,12 @@
   border-color: var(--line-strong);
   background: var(--control-bg);
   color: var(--control-text);
+}
+
+.app-shell[data-theme='dark'] .social-save-btn.is-saved {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 18%, var(--control-bg));
+  color: #d8f7f4;
 }
 
 .app-shell[data-theme='dark'] .social-account-page-tab.is-active,
@@ -1335,9 +1544,28 @@
 
 .app-shell[data-theme='dark'] .theme-switch-label,
 .app-shell[data-theme='dark'] .social-post-kicker,
-.app-shell[data-theme='dark'] .social-account-setting-card span,
+.app-shell[data-theme='dark'] .social-account-setting-card button,
 .app-shell[data-theme='dark'] .social-account-preference-row span {
   color: #75e5dc;
+}
+
+.app-shell[data-theme='dark'] .social-settings-form input:not([type='checkbox']),
+.app-shell[data-theme='dark'] .social-settings-form textarea,
+.app-shell[data-theme='dark'] .social-settings-modal-close,
+.app-shell[data-theme='dark'] .social-settings-modal-actions button {
+  border-color: var(--line-strong);
+  background: var(--bg-input);
+  color: var(--text);
+}
+
+.app-shell[data-theme='dark'] .social-settings-modal-actions button[type='submit'] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.app-shell[data-theme='dark'] .social-settings-toggle small {
+  color: var(--muted);
 }
 
 @media (max-width: 920px) {
