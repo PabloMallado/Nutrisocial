@@ -79,10 +79,42 @@ async function ensureDatabase() {
   try {
     console.log('[desktop] levantando MySQL...')
     await runOneShot('docker', ['compose', 'up', '-d', 'mysql'], 'docker compose')
+    await waitForMysqlContainer()
   } catch (error) {
     console.warn(`[desktop] no se pudo levantar MySQL automaticamente: ${error.message}`)
     console.warn('[desktop] arranca Docker Desktop y ejecuta: npm run db:up')
   }
+}
+
+async function getMysqlHealthStatus() {
+  return new Promise((resolve) => {
+    const child = spawn('docker', ['inspect', '-f', '{{.State.Health.Status}}', 'tfg-mysql'], {
+      cwd: projectRoot,
+      shell: isWindows,
+    })
+
+    let output = ''
+    child.stdout.on('data', (chunk) => {
+      output += chunk.toString()
+    })
+
+    child.on('exit', (code) => {
+      resolve(code === 0 ? output.trim() : '')
+    })
+  })
+}
+
+async function waitForMysqlContainer(timeoutMs = 90000) {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    const status = await getMysqlHealthStatus()
+    if (status === 'healthy') {
+      return
+    }
+    await sleep(1000)
+  }
+
+  throw new Error('MySQL no esta healthy. Revisa los logs con: npm run db:logs')
 }
 
 async function waitForService(url, label, timeoutMs = 30000) {

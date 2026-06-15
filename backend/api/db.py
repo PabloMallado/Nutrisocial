@@ -1,10 +1,12 @@
 import os
 from contextlib import contextmanager
+from pathlib import Path
 
 import pymysql
 from dotenv import load_dotenv
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 def db_config() -> dict:
