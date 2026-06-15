@@ -48,9 +48,30 @@ function Wait-ForMysqlContainer {
   throw 'MySQL no esta healthy. Revisa los logs con: npm run db:logs'
 }
 
+function Test-ApiHealth($port) {
+  try {
+    $response = Invoke-WebRequest "http://127.0.0.1:$port/api/health" -UseBasicParsing -TimeoutSec 2
+    return $response.StatusCode -ge 200 -and $response.StatusCode -lt 300
+  } catch {
+    return $false
+  }
+}
+
+function Test-PortInUse($port) {
+  return [bool](Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue)
+}
+
 if (-not (Test-Path '.env')) {
   Copy-Item '.env.example' '.env'
   Write-Host 'Creado .env desde .env.example'
+}
+
+$apiPort = Get-EnvValue 'API_PORT' '4000'
+
+if (Test-ApiHealth $apiPort) {
+  Write-Host "La API ya esta arrancada en http://127.0.0.1:$apiPort"
+  Write-Host 'No se inicia otra instancia para evitar el error de puerto ocupado.'
+  exit 0
 }
 
 if (-not (Test-Command docker)) {
@@ -61,7 +82,10 @@ Write-Host 'Levantando MySQL con Docker...'
 docker compose up -d mysql
 Wait-ForMysqlContainer
 
-$apiPort = Get-EnvValue 'API_PORT' '4000'
+if (Test-PortInUse $apiPort) {
+  throw "El puerto $apiPort ya esta ocupado, pero /api/health no responde. Cierra el proceso que usa ese puerto o cambia API_PORT en .env."
+}
+
 $python = Get-PythonCommand
 
 Write-Host "Arrancando API en http://127.0.0.1:$apiPort ..."
