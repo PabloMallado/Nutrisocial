@@ -6,6 +6,7 @@ type SocialHomeProps = {
   feedTab: FeedTab
   posts: SocialPost[]
   commentsByPostId: Record<string, SocialComment[]>
+  likeCountsByPostId: Record<string, number>
   currentUser: SocialUser
   usersById: Record<string, SocialUser>
   savedRecipeIds: Set<string>
@@ -14,12 +15,14 @@ type SocialHomeProps = {
   onAddComment: (postId: string, message: string) => void
   onToggleLike: (postId: string) => void
   onToggleSaveRecipe: (recipeId: string) => void
+  onAddIngredientsToList: (ingredients: SocialPost['recipe']['ingredients']) => void
 }
 
 export function SocialHome({
   feedTab,
   posts,
   commentsByPostId,
+  likeCountsByPostId,
   currentUser,
   usersById,
   savedRecipeIds,
@@ -28,6 +31,7 @@ export function SocialHome({
   onAddComment,
   onToggleLike,
   onToggleSaveRecipe,
+  onAddIngredientsToList,
 }: SocialHomeProps) {
   return (
     <section className="social-home">
@@ -66,10 +70,12 @@ export function SocialHome({
                 usersById={usersById}
                 isSaved={savedRecipeIds.has(post.id.replace(/^recipe-/, ''))}
                 isLiked={likedPostIds.has(post.id)}
+                likesCount={likeCountsByPostId[post.id] ?? 0}
                 onOpenProfile={onOpenProfile}
                 onAddComment={onAddComment}
                 onToggleLike={onToggleLike}
                 onToggleSaveRecipe={() => onToggleSaveRecipe(post.id.replace(/^recipe-/, ''))}
+                onAddIngredientsToList={onAddIngredientsToList}
               />
             )
           })

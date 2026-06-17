@@ -46,6 +46,7 @@ export function analyzeRecipeHealth(recipe: SocialRecipe): RecipeHealthAnalysis 
     highlights.push(`Buen nivel de proteina: ${recipe.protein} g, suficiente para una comida completa.`)
   } else {
     score -= 8
+    tags.push('Baja en proteina')
     suggestions.push('Podria mejorar anadiendo huevo, yogur griego, legumbres, tofu, pescado, pollo o queso fresco.')
   }
 
@@ -60,6 +61,7 @@ export function analyzeRecipeHealth(recipe: SocialRecipe): RecipeHealthAnalysis 
 
   if (recipe.fat >= 30 || macroPercentages.fat >= 45) {
     score -= 16
+    tags.push('Grasa alta')
     tags.push('Puede resultar pesada')
     warnings.push(`La grasa es alta (${recipe.fat} g, aprox. ${macroPercentages.fat}% de la energia), asi que puede ser mas indigesta si se toma antes de entrenar o por la noche.`)
     suggestions.push('Para hacerla mas ligera, reduce aceite, aguacate, frutos secos, quesos grasos o salsas.')
@@ -73,6 +75,7 @@ export function analyzeRecipeHealth(recipe: SocialRecipe): RecipeHealthAnalysis 
 
   if (recipe.calories > 650) {
     score -= 12
+    tags.push('Muy calorica')
     warnings.push(`Es una receta energetica (${recipe.calories} kcal). Puede encajar como comida principal, pero quiza sea excesiva como cena ligera.`)
   } else if (recipe.calories >= 350 && recipe.calories <= 600) {
     score += 6
@@ -92,6 +95,7 @@ export function analyzeRecipeHealth(recipe: SocialRecipe): RecipeHealthAnalysis 
     tags.push('Con vegetales')
     highlights.push('Incluye vegetales o fruta, buena senal para fibra, micronutrientes y saciedad.')
   } else {
+    tags.push('Poca fibra')
     suggestions.push('Anadir verdura o fruta ayudaria a mejorar fibra, volumen y micronutrientes.')
   }
 

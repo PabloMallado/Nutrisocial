@@ -2,9 +2,11 @@ export type FeedTab = 'para-ti' | 'siguiendo'
 export type AccountSection = 'overview' | 'saved' | 'settings' | 'preferences'
 
 export type FollowStatus = 'not_following' | 'following'
+export type FriendshipStatus = 'none' | 'request_sent' | 'friends'
 
 export type UserRelationship = {
   followStatus: FollowStatus
+  friendshipStatus: FriendshipStatus
 }
 
 export type SocialUser = {
@@ -19,6 +21,7 @@ export type SocialUser = {
 }
 
 export type SocialRecipeIngredient = {
+  productId?: string
   name: string
   amount: string
 }
@@ -62,4 +65,5 @@ export type SocialState = {
   commentsByPostId: Record<string, SocialComment[]>
   likedPostIds: string[]
   followingIds: string[]
+  sentFriendRequestIds: string[]
 }

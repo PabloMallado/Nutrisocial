@@ -28,12 +28,9 @@ export function SocialSidebar({
   const discoverUsers = useMemo(
     () =>
       Object.values(usersById).filter(
-        (user) =>
-          user.id !== currentUser.id &&
-          user.username !== currentUser.username &&
-          !followingSet.has(user.id),
+        (user) => user.id !== currentUser.id && !followingSet.has(user.id),
       ),
-    [currentUser.id, currentUser.username, followingSet, usersById],
+    [currentUser.id, followingSet, usersById],
   )
 
   return (

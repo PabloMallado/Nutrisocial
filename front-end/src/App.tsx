@@ -1,28 +1,33 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { ChangeEvent, FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import './App.css'
 import { SocialAccountPage } from './features/social/SocialAccountPage'
 import { SocialHome } from './features/social/SocialHome'
 import { SocialProfilePage } from './features/social/SocialProfilePage'
 import { SocialSidebar } from './features/social/SocialSidebar'
+import { RecipeHealthPanel } from './features/social/components/RecipeHealthPanel'
 import { useSocialState } from './features/social/use-social-state'
 import { apiRequest } from './services/http'
-import type { AccountSection, FeedTab, SocialPost, SocialUser } from './features/social/types'
+import type { AccountSection, FeedTab, SocialPost, SocialRecipe, SocialRecipeIngredient, SocialUser } from './features/social/types'
 
 
 type User = { id: string; name: string; handle: string; bio: string; avatarUrl: string | null }
 type Store = { id: string; name: string; description: string; address: string; city: string; logo: string; accent: string; image: string | null; productCount: number }
 type Product = { id: string; name: string; category: string; brand: string; storeId: string; referenceAmount: number; referenceUnit: string; image: string | null; price: number; stock: number; calories: number; protein: number; carbs: number; fat: number }
-type Recipe = { id: string; userId: string; storeId: string | null; title: string; description: string; steps: string; image: string | null; servings: number; prepTime: number; difficulty: string; caloriesTotal: number; proteinTotal: number; carbsTotal: number; fatTotal: number; createdAt: string }
+type RecipeIngredient = { productId: string; name: string; amount: string }
+type Recipe = { id: string; userId: string; storeId: string | null; title: string; description: string; steps: string; image: string | null; servings: number; prepTime: number; difficulty: string; caloriesTotal: number; proteinTotal: number; carbsTotal: number; fatTotal: number; createdAt: string; ingredients: RecipeIngredient[] }
+type ProductFolder = { id: string; name: string; productIds: string[]; image: string | null }
+type ProductFolderPrompt = { productIds: string[]; title: string }
 type RecipeForm = { title: string; description: string; steps: string; userId: string; storeId: string; difficulty: string; servings: string; prepTime: string; imageUrl: string; ingredients: Array<{ productId: string; quantity: string; unit: string }> }
 type RecipeIngredientDetail = { product_id: number; name: string; brand: string; category: string; image_url: string | null; calories: number; protein: number | string; carbs: number | string; fat: number | string; reference_amount: number | string; reference_unit: string; quantity: number | string; unit: string }
 type RecipeDetail = { id: number; user_id: number; store_id: string | null; title: string; description: string | null; steps: string | null; image_url: string | null; servings: number; prep_time: number; difficulty: string; ingredients: RecipeIngredientDetail[] }
+type CreateRecipeResponse = { ok: boolean; id: number | string }
 type ApiBootstrap = {
   users: Array<{ id: number; name: string; handle: string; bio: string | null; avatar_url: string | null }>
   stores: Array<{ id: string; name: string; description: string | null; address: string | null; city: string; logo: string; accent: string; image_url: string | null; products_count: number | string }>
   products: Array<{ id: number; name: string; category: string; brand: string; store_id: string; reference_amount: number | string; reference_unit: string; image_url: string | null; price: number | string; stock: number; calories: number; protein: number | string; carbs: number | string; fat: number | string }>
-  recipes: Array<{ id: number; user_id: number; store_id: string | null; title: string; description: string | null; steps: string | null; image_url: string | null; servings: number; prep_time: number; difficulty: string; calories_total: number | string; protein_total: number | string; carbs_total: number | string; fat_total: number | string; created_at: string }>
+  recipes: Array<{ id: number; user_id: number; store_id: string | null; title: string; description: string | null; steps: string | null; image_url: string | null; servings: number; prep_time: number; difficulty: string; calories_total: number | string; protein_total: number | string; carbs_total: number | string; fat_total: number | string; created_at: string; ingredients?: Array<{ product_id: number | string; name: string; quantity: number | string; unit: string | null }> }>
 }
 type AuthUser = { id: number; name: string; handle: string; avatar_url: string | null }
 type AuthResponse = { ok: boolean; user: AuthUser }
@@ -33,6 +38,7 @@ type AuthMode = 'login' | 'register'
 type IngredientStep = 'select' | 'amount'
 type ProductSortOption = 'recent' | 'name' | 'protein' | 'calories'
 type RecipeTab = 'mine' | 'saved'
+type ProductTab = 'catalog' | 'list'
 type ExternalProductPreview = { code: string; existing_id: number | null; id?: number; name: string; brand: string; category: string; store: string; image_url: string | null; calories: number; protein: number; carbs: number; fat: number; reference_amount: number; reference_unit: string; status?: 'imported' | 'updated' }
 type OpenFoodFactsSearchResponse = { ok: boolean; query: string; products: ExternalProductPreview[] }
 type OpenFoodFactsImportOneResponse = { ok: boolean; product: ExternalProductPreview & { id: number; status: 'imported' | 'updated' } }
@@ -83,6 +89,12 @@ const hiddenStoreNames = new Set([
   'ahorra mas',
   'hacendado mercadona',
   'zendado mercadona',
+])
+const limonShowcaseRecipeTitles = new Set([
+  'Bowl mediterraneo de quinoa y parmesano',
+  'Tostadas integrales con crema suave y ketchup especiado',
+  'Pasta con tomate, parmesano y toque crujiente',
+  'Vaso rosa proteico con hielo',
 ])
 
 const blankRecipeForm = (userId = ''): RecipeForm => ({ title: '', description: '', steps: '', userId, storeId: '', difficulty: 'Media', servings: '1', prepTime: '0', imageUrl: '', ingredients: [] })
@@ -135,9 +147,12 @@ const storeRememberedUsername = (username: string | null) => {
 }
 
 const savedProductsStorageKey = 'nutrisocial-saved-product-ids'
+const productFoldersStorageKey = 'nutrisocial-product-folders'
 const savedRecipesStorageKey = 'nutrisocial-saved-recipe-ids'
 const publishedRecipesStorageKey = 'nutrisocial-published-recipe-ids'
 const appPreferencesStorageKey = 'nutrisocial-app-preferences'
+const productsPerPage = 20
+const folderPickerProductsPerPage = 10
 const defaultAppPreferences: AppPreferences = {
   activeSection: 'inicio',
   accountSection: 'overview',
@@ -148,11 +163,14 @@ const defaultAppPreferences: AppPreferences = {
   checkedProductIds: [],
 }
 const persistedMainSections = new Set<AppPreferences['activeSection']>(['inicio', 'productos', 'tiendas', 'recetas', 'cuenta'])
+const userStorageKey = (baseKey: string, userId?: string | number | null) => (
+  userId ? `${baseKey}:user-${userId}` : baseKey
+)
 
-const readSavedProductIds = () => {
+const readSavedProductIds = (userId?: string | number | null) => {
   if (typeof window === 'undefined') return new Set<string>()
   try {
-    const rawValue = window.localStorage.getItem(savedProductsStorageKey)
+    const rawValue = window.localStorage.getItem(userStorageKey(savedProductsStorageKey, userId))
     const parsed = rawValue ? JSON.parse(rawValue) : []
     return new Set(Array.isArray(parsed) ? parsed.map(String) : [])
   } catch {
@@ -160,15 +178,39 @@ const readSavedProductIds = () => {
   }
 }
 
-const storeSavedProductIds = (ids: Set<string>) => {
+const storeSavedProductIds = (ids: Set<string>, userId?: string | number | null) => {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(savedProductsStorageKey, JSON.stringify([...ids]))
+  window.localStorage.setItem(userStorageKey(savedProductsStorageKey, userId), JSON.stringify([...ids]))
 }
 
-const readSavedRecipeIds = () => {
+const readProductFolders = (userId?: string | number | null): ProductFolder[] => {
+  if (typeof window === 'undefined') return []
+  try {
+    const rawValue = window.localStorage.getItem(userStorageKey(productFoldersStorageKey, userId))
+    const parsed = rawValue ? JSON.parse(rawValue) : []
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((folder) => ({
+        id: String(folder?.id ?? ''),
+        name: String(folder?.name ?? '').trim(),
+        productIds: Array.isArray(folder?.productIds) ? folder.productIds.map(String) : [],
+        image: typeof folder?.image === 'string' && folder.image.trim() ? folder.image.trim() : null,
+      }))
+      .filter((folder) => folder.id && folder.name)
+  } catch {
+    return []
+  }
+}
+
+const storeProductFolders = (folders: ProductFolder[], userId?: string | number | null) => {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(userStorageKey(productFoldersStorageKey, userId), JSON.stringify(folders))
+}
+
+const readSavedRecipeIds = (userId?: string | number | null) => {
   if (typeof window === 'undefined') return new Set<string>()
   try {
-    const rawValue = window.localStorage.getItem(savedRecipesStorageKey)
+    const rawValue = window.localStorage.getItem(userStorageKey(savedRecipesStorageKey, userId))
     const parsed = rawValue ? JSON.parse(rawValue) : []
     return new Set(Array.isArray(parsed) ? parsed.map(String) : [])
   } catch {
@@ -176,9 +218,9 @@ const readSavedRecipeIds = () => {
   }
 }
 
-const storeSavedRecipeIds = (ids: Set<string>) => {
+const storeSavedRecipeIds = (ids: Set<string>, userId?: string | number | null) => {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(savedRecipesStorageKey, JSON.stringify([...ids]))
+  window.localStorage.setItem(userStorageKey(savedRecipesStorageKey, userId), JSON.stringify([...ids]))
 }
 
 const readPublishedRecipeIds = () => {
@@ -244,6 +286,7 @@ const userToSocialUser = (user: User): SocialUser => ({
   followingCount: 0,
   relationshipWithMe: {
     followStatus: 'not_following',
+    friendshipStatus: 'none',
   },
 })
 
@@ -258,6 +301,7 @@ const authUserToSocialUser = (authUser: AuthUser): SocialUser => {
     followingCount: 0,
     relationshipWithMe: {
       followStatus: 'following',
+      friendshipStatus: 'friends',
     },
   }
 }
@@ -281,7 +325,11 @@ const recipeToSocialPost = (recipe: Recipe): SocialPost => ({
     protein: Number(recipe.proteinTotal.toFixed(1)),
     carbs: Number(recipe.carbsTotal.toFixed(1)),
     fat: Number(recipe.fatTotal.toFixed(1)),
-    ingredients: [],
+    ingredients: recipe.ingredients.map((ingredient) => ({
+      productId: ingredient.productId,
+      name: ingredient.name,
+      amount: ingredient.amount,
+    })),
     steps: recipe.steps
       ? recipe.steps.split(/\r?\n/).map((step) => step.replace(/^\d+[\s.)-]+/, '').trim()).filter(Boolean)
       : ['Sin pasos detallados.'],
@@ -362,17 +410,30 @@ function App() {
   const [externalImportSummary, setExternalImportSummary] = useState<string | null>(null)
   const [externalImportResults, setExternalImportResults] = useState<ExternalProductPreview[]>([])
   const [addingExternalProductCode, setAddingExternalProductCode] = useState<string | null>(null)
-  const [storeSyncLoading, setStoreSyncLoading] = useState(false)
-  const [savedProductIds, setSavedProductIds] = useState<Set<string>>(() => readSavedProductIds())
-  const [savedRecipeIds, setSavedRecipeIds] = useState<Set<string>>(() => readSavedRecipeIds())
+  const [savedProductIds, setSavedProductIds] = useState<Set<string>>(() => new Set())
+  const [productFolders, setProductFolders] = useState<ProductFolder[]>([])
+  const [activeProductFolderId, setActiveProductFolderId] = useState('all')
+  const [newProductFolderName, setNewProductFolderName] = useState('')
+  const [newProductFolderImage, setNewProductFolderImage] = useState('')
+  const [productFolderEditorOpen, setProductFolderEditorOpen] = useState(false)
+  const [editedProductFolderName, setEditedProductFolderName] = useState('')
+  const [editedProductFolderImage, setEditedProductFolderImage] = useState('')
+  const [folderProductSearch, setFolderProductSearch] = useState('')
+  const [folderProductPage, setFolderProductPage] = useState(1)
+  const [productFolderPrompt, setProductFolderPrompt] = useState<ProductFolderPrompt | null>(null)
+  const [promptProductFolderName, setPromptProductFolderName] = useState('')
+  const [savedRecipeIds, setSavedRecipeIds] = useState<Set<string>>(() => new Set())
   const [publishedRecipeIds, setPublishedRecipeIds] = useState<Set<string>>(() => readPublishedRecipeIds())
   const [checkedProductIds, setCheckedProductIds] = useState<Set<string>>(() => new Set(preferences.checkedProductIds))
   const [productSearchTerm, setProductSearchTerm] = useState(preferences.productSearchTerm)
   const [productSort, setProductSort] = useState<ProductSortOption>(preferences.productSort)
   const [productStoreFilter, setProductStoreFilter] = useState(preferences.productStoreFilter)
   const [showRecipeForm, setShowRecipeForm] = useState(false)
+  const [productTab, setProductTab] = useState<ProductTab>('catalog')
+  const [productPage, setProductPage] = useState(1)
   const [recipeTab, setRecipeTab] = useState<RecipeTab>('mine')
   const [recipeForm, setRecipeForm] = useState<RecipeForm>(blankRecipeForm())
+  const [recipeImageName, setRecipeImageName] = useState('')
   const [ingredientPickerOpen, setIngredientPickerOpen] = useState(false)
   const [ingredientStep, setIngredientStep] = useState<IngredientStep>('select')
   const [ingredientProductId, setIngredientProductId] = useState('')
@@ -381,6 +442,7 @@ function App() {
   const [ingredientStoreFilters, setIngredientStoreFilters] = useState<string[]>([])
   const [selectedRecipeDetail, setSelectedRecipeDetail] = useState<RecipeDetail | null>(null)
   const [recipeDetailLoading, setRecipeDetailLoading] = useState(false)
+  const [showRecipeDetailHealth, setShowRecipeDetailHealth] = useState(false)
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialog | null>(null)
   const [themeMode, setThemeMode] = useState<ThemeMode>(readStoredTheme)
   const [authUser, setAuthUser] = useState<AuthUser | null>(readStoredAuthUser)
@@ -392,6 +454,7 @@ function App() {
   const [authRememberUsername, setAuthRememberUsername] = useState(() => readRememberedUsername().length > 0)
   const [authMessage, setAuthMessage] = useState<string | null>(null)
   const [authLoading, setAuthLoading] = useState(false)
+  const storageUserId = authUser ? String(authUser.id) : null
   const effectiveCurrentUser = useMemo(
     () => authUserToSocialUser(authUser ?? { id: 0, name: 'Usuario', handle: 'usuario', avatar_url: null }),
     [authUser],
@@ -410,16 +473,19 @@ function App() {
 
     return nextUsers
   }, [effectiveCurrentUser, users])
-  const publishedSocialPosts = useMemo(
+  const socialPosts = useMemo(
     () => recipesCrud.filter((recipe) => publishedRecipeIds.has(recipe.id)).map(recipeToSocialPost),
     [publishedRecipeIds, recipesCrud],
   )
   const {
     commentsByPostId,
+    likeCountsByPostId,
     followingUsers,
     followingSet,
+    requestSet,
     likedPostSet,
     followUser,
+    sendFriendRequest,
     addComment,
     toggleLike,
   } = useSocialState(effectiveCurrentUser.id, effectiveUsersById)
@@ -429,7 +495,28 @@ function App() {
     setUsers(data.users.map((u) => ({ id: String(u.id), name: u.name, handle: u.handle, bio: u.bio ?? '', avatarUrl: u.avatar_url })))
     setStoresCrud(data.stores.map((s) => ({ id: s.id, name: s.name, description: s.description ?? '', address: s.address ?? '', city: s.city, logo: s.logo, accent: s.accent, image: s.image_url, productCount: Number(s.products_count ?? 0) })))
     setProductsCrud(data.products.map((p) => ({ id: String(p.id), name: p.name, category: p.category, brand: p.brand, storeId: p.store_id, referenceAmount: Number(p.reference_amount ?? 100), referenceUnit: p.reference_unit || 'g', image: p.image_url, price: Number(p.price ?? 0), stock: Number(p.stock ?? 0), calories: Number(p.calories ?? 0), protein: Number(p.protein ?? 0), carbs: Number(p.carbs ?? 0), fat: Number(p.fat ?? 0) })))
-    setRecipesCrud(data.recipes.map((r) => ({ id: String(r.id), userId: String(r.user_id), storeId: r.store_id, title: r.title, description: r.description ?? '', steps: r.steps ?? '', image: r.image_url, servings: Number(r.servings ?? 1), prepTime: Number(r.prep_time ?? 0), difficulty: r.difficulty, caloriesTotal: Number(r.calories_total ?? 0), proteinTotal: Number(r.protein_total ?? 0), carbsTotal: Number(r.carbs_total ?? 0), fatTotal: Number(r.fat_total ?? 0), createdAt: r.created_at })))
+    setRecipesCrud(data.recipes.map((r) => ({
+      id: String(r.id),
+      userId: String(r.user_id),
+      storeId: r.store_id,
+      title: r.title,
+      description: r.description ?? '',
+      steps: r.steps ?? '',
+      image: r.image_url,
+      servings: Number(r.servings ?? 1),
+      prepTime: Number(r.prep_time ?? 0),
+      difficulty: r.difficulty,
+      caloriesTotal: Number(r.calories_total ?? 0),
+      proteinTotal: Number(r.protein_total ?? 0),
+      carbsTotal: Number(r.carbs_total ?? 0),
+      fatTotal: Number(r.fat_total ?? 0),
+      createdAt: r.created_at,
+      ingredients: (r.ingredients ?? []).map((ingredient) => ({
+        productId: String(ingredient.product_id),
+        name: ingredient.name,
+        amount: `${Number(ingredient.quantity ?? 0).toLocaleString('es-ES', { maximumFractionDigits: 2 })} ${ingredient.unit || 'unidad'}`,
+      })),
+    })))
   }, [])
 
   useEffect(() => {
@@ -446,6 +533,16 @@ function App() {
   }, [authUser])
 
   useEffect(() => {
+    setSavedProductIds(storageUserId ? readSavedProductIds(storageUserId) : new Set<string>())
+    setProductFolders(storageUserId ? readProductFolders(storageUserId) : [])
+    setSavedRecipeIds(storageUserId ? readSavedRecipeIds(storageUserId) : new Set<string>())
+    setCheckedProductIds(new Set())
+    setActiveProductFolderId('all')
+    setProductFolderPrompt(null)
+    setProductFolderEditorOpen(false)
+  }, [storageUserId])
+
+  useEffect(() => {
     const nextActiveSection = activeSection === 'perfil' ? 'inicio' : activeSection
     storeAppPreferences({
       activeSection: nextActiveSection,
@@ -459,8 +556,34 @@ function App() {
   }, [accountSection, activeSection, checkedProductIds, feedTab, productSearchTerm, productSort, productStoreFilter])
 
   useEffect(() => {
+    const limonShowcaseIds = recipesCrud
+      .filter((recipe) => recipe.userId === '4' && limonShowcaseRecipeTitles.has(recipe.title))
+      .map((recipe) => recipe.id)
+
+    if (limonShowcaseIds.length === 0) return
+
+    setPublishedRecipeIds((current) => {
+      const next = new Set(current)
+      let changed = false
+      limonShowcaseIds.forEach((recipeId) => {
+        if (!next.has(recipeId)) {
+          next.add(recipeId)
+          changed = true
+        }
+      })
+      if (!changed) return current
+      storePublishedRecipeIds(next)
+      return next
+    })
+  }, [recipesCrud])
+
+  useEffect(() => {
     setRecipeForm((p) => ({ ...p, userId: p.userId || (authUser ? String(authUser.id) : users[0]?.id || '') }))
   }, [authUser, users])
+
+  useEffect(() => {
+    setProductPage(1)
+  }, [productSearchTerm, productSort, productStoreFilter])
 
   const storeById = useMemo(() => new Map(storesCrud.map((s) => [s.id, s])), [storesCrud])
   const productById = useMemo(() => new Map(productsCrud.map((product) => [product.id, product])), [productsCrud])
@@ -500,11 +623,60 @@ function App() {
     () => sortedVisibleProducts.filter((product) => savedProductIds.has(product.id)),
     [savedProductIds, sortedVisibleProducts],
   )
-  const discoveryProducts = useMemo(() => {
-    const candidates = sortedVisibleProducts.filter((product) => !savedProductIds.has(product.id))
-    if (productSort === 'recent') return [...candidates].sort(() => Math.random() - 0.5).slice(0, 8)
-    return candidates.slice(0, 8)
-  }, [productSort, savedProductIds, sortedVisibleProducts])
+  const activeProductFolder = useMemo(
+    () => productFolders.find((folder) => folder.id === activeProductFolderId) ?? null,
+    [activeProductFolderId, productFolders],
+  )
+  const activeFolderProductIds = useMemo(
+    () => new Set(activeProductFolder?.productIds ?? []),
+    [activeProductFolder],
+  )
+  const visibleSavedProducts = useMemo(
+    () => savedProducts,
+    [savedProducts],
+  )
+  const folderProductOptions = useMemo(
+    () => activeProductFolder
+      ? sortedVisibleProducts.filter((product) => !activeFolderProductIds.has(product.id))
+      : [],
+    [activeFolderProductIds, activeProductFolder, sortedVisibleProducts],
+  )
+  const folderProductSearchToken = useMemo(() => normalizeStoreToken(folderProductSearch), [folderProductSearch])
+  const filteredFolderProductOptions = useMemo(
+    () => folderProductOptions.filter((product) => {
+      if (!folderProductSearchToken) return true
+      const store = storeById.get(product.storeId)
+      const haystack = normalizeStoreToken(`${product.name} ${product.brand} ${product.category} ${store?.name ?? ''}`)
+      return haystack.includes(folderProductSearchToken)
+    }),
+    [folderProductOptions, folderProductSearchToken, storeById],
+  )
+  const folderProductPageCount = Math.max(1, Math.ceil(filteredFolderProductOptions.length / folderPickerProductsPerPage))
+  const paginatedFolderProductOptions = useMemo(() => {
+    const startIndex = (folderProductPage - 1) * folderPickerProductsPerPage
+    return filteredFolderProductOptions.slice(startIndex, startIndex + folderPickerProductsPerPage)
+  }, [filteredFolderProductOptions, folderProductPage])
+  const folderProductPageStart = filteredFolderProductOptions.length === 0 ? 0 : (folderProductPage - 1) * folderPickerProductsPerPage + 1
+  const folderProductPageEnd = Math.min(folderProductPage * folderPickerProductsPerPage, filteredFolderProductOptions.length)
+  const discoveryProducts = sortedVisibleProducts
+  const productPageCount = Math.max(1, Math.ceil(discoveryProducts.length / productsPerPage))
+  const paginatedDiscoveryProducts = useMemo(() => {
+    const startIndex = (productPage - 1) * productsPerPage
+    return discoveryProducts.slice(startIndex, startIndex + productsPerPage)
+  }, [discoveryProducts, productPage])
+  const productPageStart = discoveryProducts.length === 0 ? 0 : (productPage - 1) * productsPerPage + 1
+  const productPageEnd = Math.min(productPage * productsPerPage, discoveryProducts.length)
+  useEffect(() => {
+    setProductPage((current) => Math.min(current, productPageCount))
+  }, [productPageCount])
+
+  useEffect(() => {
+    setFolderProductPage(1)
+  }, [folderProductSearch, activeProductFolderId, productFolderEditorOpen])
+
+  useEffect(() => {
+    setFolderProductPage((current) => Math.min(current, folderProductPageCount))
+  }, [folderProductPageCount])
   const checkedSavedProducts = useMemo(
     () => savedProducts.filter((product) => checkedProductIds.has(product.id)),
     [checkedProductIds, savedProducts],
@@ -540,6 +712,32 @@ function App() {
   const selectedIngredientMacroPreview = selectedIngredientProduct
     ? calculateProductMacros(selectedIngredientProduct, n(ingredientGrams))
     : { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  const selectedRecipeSummary = useMemo(
+    () => recipesCrud.find((recipe) => recipe.id === String(selectedRecipeDetail?.id)),
+    [recipesCrud, selectedRecipeDetail],
+  )
+  const selectedRecipeSocialRecipe = useMemo<SocialRecipe | null>(() => {
+    if (!selectedRecipeDetail) return null
+
+    return {
+      title: selectedRecipeDetail.title,
+      description: selectedRecipeDetail.description || 'Sin descripcion',
+      difficulty: selectedRecipeDetail.difficulty,
+      prepTimeMinutes: selectedRecipeDetail.prep_time,
+      servings: selectedRecipeDetail.servings,
+      calories: Math.round(selectedRecipeSummary?.caloriesTotal ?? 0),
+      protein: Number((selectedRecipeSummary?.proteinTotal ?? 0).toFixed(1)),
+      carbs: Number((selectedRecipeSummary?.carbsTotal ?? 0).toFixed(1)),
+      fat: Number((selectedRecipeSummary?.fatTotal ?? 0).toFixed(1)),
+      ingredients: selectedRecipeDetail.ingredients.map((ingredient) => ({
+        name: ingredient.name,
+        amount: `${n(String(ingredient.quantity))} ${ingredient.unit}`,
+      })),
+      steps: selectedRecipeDetail.steps
+        ? selectedRecipeDetail.steps.split(/\r?\n/).map((step) => step.trim()).filter(Boolean)
+        : ['Sin pasos detallados.'],
+    }
+  }, [selectedRecipeDetail, selectedRecipeSummary])
 
   useEffect(() => {
     if (!ingredientProductId) return
@@ -549,6 +747,7 @@ function App() {
 
   function resetRecipeEditor() {
     setRecipeForm(blankRecipeForm(authUser ? String(authUser.id) : users[0]?.id || ''))
+    setRecipeImageName('')
     setIngredientPickerOpen(false)
     setIngredientStep('select')
     setIngredientProductId('')
@@ -565,6 +764,7 @@ function App() {
   function openRecipeForm() {
     setShowRecipeForm(true)
     setRecipeForm(blankRecipeForm(authUser ? String(authUser.id) : users[0]?.id || ''))
+    setRecipeImageName('')
     setIngredientPickerOpen(false)
     setIngredientStep('select')
     setIngredientProductId('')
@@ -598,6 +798,7 @@ function App() {
 
   function handleRecipeImageFile(file: File | null) {
     if (!file) return
+    setRecipeImageName(file.name)
     const reader = new FileReader()
     reader.onload = () => {
       setRecipeForm((current) => ({ ...current, imageUrl: String(reader.result ?? '') }))
@@ -649,17 +850,8 @@ function App() {
       ingredients,
     }
     try {
-      const result = await postJson('/api/recipes', payload) as { id?: number | string }
-      const recipeId = result.id ? String(result.id) : null
-      if (recipeId) {
-        setSavedRecipeIds((current) => {
-          const next = new Set(current)
-          next.add(recipeId)
-          storeSavedRecipeIds(next)
-          return next
-        })
-      }
-      setCrudMessage('Receta guardada en Mis recetas. Puedes publicarla cuando quieras.')
+      await postJson('/api/recipes', payload) as CreateRecipeResponse
+      setCrudMessage('Receta creada en Mis recetas.')
       await loadCrudData()
       setShowRecipeForm(false)
       resetRecipeEditor()
@@ -670,6 +862,7 @@ function App() {
 
   async function openRecipeDetail(recipeId: string) {
     setRecipeDetailLoading(true)
+    setShowRecipeDetailHealth(false)
     try {
       const detail = await fetchJson<RecipeDetail>(`/api/recipes/${recipeId}`)
       setSelectedRecipeDetail(detail)
@@ -680,11 +873,33 @@ function App() {
     }
   }
 
+  function closeRecipeDetail() {
+    setSelectedRecipeDetail(null)
+    setShowRecipeDetailHealth(false)
+  }
+
+  async function openRecipeDetailWithHealth(recipeId: string) {
+    await openRecipeDetail(recipeId)
+    setShowRecipeDetailHealth(true)
+  }
+
   async function confirmDelete() {
     if (!deleteDialog) return
     try {
       await deleteJson(`/api/recipes/${deleteDialog.id}`)
       setCrudMessage('Receta eliminada.')
+      setSavedRecipeIds((current) => {
+        const next = new Set(current)
+        next.delete(deleteDialog.id)
+        storeSavedRecipeIds(next, storageUserId)
+        return next
+      })
+      setPublishedRecipeIds((current) => {
+        const next = new Set(current)
+        next.delete(deleteDialog.id)
+        storePublishedRecipeIds(next)
+        return next
+      })
       await loadCrudData()
     } catch (err) {
       setCrudMessage((err as Error).message)
@@ -697,8 +912,182 @@ function App() {
     setSavedProductIds((current) => {
       const next = new Set(current)
       next.add(productId)
-      storeSavedProductIds(next)
+      storeSavedProductIds(next, storageUserId)
       return next
+    })
+    const product = productById.get(productId)
+    setProductFolderPrompt({
+      productIds: [productId],
+      title: product?.name ? `Producto añadido: ${product.name}` : 'Producto añadido',
+    })
+  }
+
+  function assignProductsToFolder(folderId: string, productIds: string[]) {
+    setProductFolders((current) => {
+      const next = current.map((folder) => {
+        if (folder.id !== folderId) return folder
+        const mergedIds = new Set(folder.productIds)
+        productIds.forEach((productId) => mergedIds.add(productId))
+        return { ...folder, productIds: [...mergedIds] }
+      })
+      storeProductFolders(next, storageUserId)
+      return next
+    })
+    setActiveProductFolderId(folderId)
+    setProductFolderPrompt(null)
+    setPromptProductFolderName('')
+  }
+
+  function createPromptProductFolder() {
+    if (!productFolderPrompt) return
+    const name = promptProductFolderName.trim()
+    if (!name) return
+
+    const folder: ProductFolder = {
+      id: `folder-${Date.now()}`,
+      name,
+      productIds: [...new Set(productFolderPrompt.productIds)],
+      image: null,
+    }
+    setProductFolders((current) => {
+      const next = [...current, folder]
+      storeProductFolders(next, storageUserId)
+      return next
+    })
+    setActiveProductFolderId(folder.id)
+    setProductFolderPrompt(null)
+    setPromptProductFolderName('')
+  }
+
+  function leaveProductsInGeneralList() {
+    setProductFolderPrompt(null)
+    setPromptProductFolderName('')
+  }
+
+  function createProductFolder() {
+    const name = newProductFolderName.trim()
+    if (!name) return
+
+    const folder: ProductFolder = {
+      id: `folder-${Date.now()}`,
+      name,
+      image: newProductFolderImage.trim() || null,
+      productIds: [],
+    }
+    setProductFolders((current) => {
+      const next = [...current, folder]
+      storeProductFolders(next, storageUserId)
+      return next
+    })
+    setActiveProductFolderId(folder.id)
+    setNewProductFolderName('')
+    setNewProductFolderImage('')
+  }
+
+  function readProductFolderImage(event: ChangeEvent<HTMLInputElement>, setter: (value: string) => void) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') setter(reader.result)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function openProductFolderEditor(folder: ProductFolder) {
+    setActiveProductFolderId(folder.id)
+    setEditedProductFolderName(folder.name)
+    setEditedProductFolderImage(folder.image ?? '')
+    setFolderProductSearch('')
+    setProductFolderEditorOpen(true)
+  }
+
+  function closeProductFolderEditor() {
+    setProductFolderEditorOpen(false)
+    setFolderProductSearch('')
+  }
+
+  function saveActiveProductFolderDetails() {
+    if (!activeProductFolder) return
+    const name = editedProductFolderName.trim()
+    if (!name) return
+    const image = editedProductFolderImage.trim() || null
+
+    setProductFolders((current) => {
+      const next = current.map((folder) => (
+        folder.id === activeProductFolder.id
+          ? { ...folder, name, image }
+          : folder
+      ))
+      storeProductFolders(next, storageUserId)
+      return next
+    })
+  }
+
+  function addProductToActiveFolder(productId: string) {
+    if (!activeProductFolder) return
+    setSavedProductIds((current) => {
+      if (current.has(productId)) return current
+      const next = new Set(current)
+      next.add(productId)
+      storeSavedProductIds(next, storageUserId)
+      return next
+    })
+    setProductFolders((current) => {
+      const next = current.map((folder) => {
+        if (folder.id !== activeProductFolder.id || folder.productIds.includes(productId)) return folder
+        return { ...folder, productIds: [...folder.productIds, productId] }
+      })
+      storeProductFolders(next, storageUserId)
+      return next
+    })
+    setFolderProductSearch('')
+  }
+
+  function removeProductFromActiveFolder(productId: string) {
+    if (!activeProductFolder) return
+    setProductFolders((current) => {
+      const next = current.map((folder) => (
+        folder.id === activeProductFolder.id
+          ? { ...folder, productIds: folder.productIds.filter((id) => id !== productId) }
+          : folder
+      ))
+      storeProductFolders(next, storageUserId)
+      return next
+    })
+  }
+
+  function deleteActiveProductFolder() {
+    if (!activeProductFolder) return
+    deleteProductFolder(activeProductFolder.id)
+  }
+
+  function deleteProductFolder(folderId: string) {
+    setProductFolders((current) => {
+      const next = current.filter((folder) => folder.id !== folderId)
+      storeProductFolders(next, storageUserId)
+      return next
+    })
+    setActiveProductFolderId('all')
+    setProductFolderEditorOpen(false)
+  }
+
+  function addRecipeIngredientsToProductList(ingredients: SocialRecipeIngredient[]) {
+    const productIds = [...new Set(ingredients
+      .map((ingredient) => ingredient.productId)
+      .filter((productId): productId is string => Boolean(productId)))]
+    if (productIds.length === 0) return
+
+    setSavedProductIds((current) => {
+      const next = new Set(current)
+      productIds.forEach((productId) => next.add(productId))
+      storeSavedProductIds(next, storageUserId)
+      return next
+    })
+    setCrudMessage(`${productIds.length} producto${productIds.length === 1 ? '' : 's'} añadido${productIds.length === 1 ? '' : 's'} a Mi lista.`)
+    setProductFolderPrompt({
+      productIds,
+      title: `${productIds.length} producto${productIds.length === 1 ? '' : 's'} de la receta añadido${productIds.length === 1 ? '' : 's'}`,
     })
   }
 
@@ -706,12 +1095,20 @@ function App() {
     setSavedProductIds((current) => {
       const next = new Set(current)
       next.delete(productId)
-      storeSavedProductIds(next)
+      storeSavedProductIds(next, storageUserId)
       return next
     })
     setCheckedProductIds((current) => {
       const next = new Set(current)
       next.delete(productId)
+      return next
+    })
+    setProductFolders((current) => {
+      const next = current.map((folder) => ({
+        ...folder,
+        productIds: folder.productIds.filter((id) => id !== productId),
+      }))
+      storeProductFolders(next, storageUserId)
       return next
     })
   }
@@ -735,7 +1132,7 @@ function App() {
     setSavedProductIds((current) => {
       const next = new Set(current)
       productIdsToRemove.forEach((productId) => next.delete(productId))
-      storeSavedProductIds(next)
+      storeSavedProductIds(next, storageUserId)
       return next
     })
     setCheckedProductIds((current) => {
@@ -743,6 +1140,13 @@ function App() {
       productIdsToRemove.forEach((productId) => next.delete(productId))
       return next
     })
+  }
+
+  function productFolderCover(folder: ProductFolder) {
+    if (folder.image) return folder.image
+    return folder.productIds
+      .map((productId) => productById.get(productId)?.image ?? null)
+      .find((image): image is string => Boolean(image)) ?? null
   }
 
   async function syncOpenFoodFactsProducts() {
@@ -768,22 +1172,6 @@ function App() {
       setCrudMessage((err as Error).message)
     } finally {
       setExternalImportLoading(false)
-    }
-  }
-
-  async function syncOpenFoodFactsStores() {
-    setStoreSyncLoading(true)
-    setCrudMessage('Sincronizando productos por tienda desde Open Food Facts...')
-    try {
-      const result = await postJson('/api/open-food-facts/import-stores', {
-        per_store: 80,
-      }) as { imported: number; updated: number; storesTouched: number }
-      setCrudMessage(`Sincronizacion completada: ${result.imported} productos nuevos, ${result.updated} actualizados y ${result.storesTouched} tiendas con productos.`)
-      await loadCrudData()
-    } catch (err) {
-      setCrudMessage((err as Error).message)
-    } finally {
-      setStoreSyncLoading(false)
     }
   }
 
@@ -882,49 +1270,76 @@ function App() {
       : activeSection
   const feedPosts = useMemo(
     () => feedTab === 'para-ti'
-      ? publishedSocialPosts
-      : publishedSocialPosts.filter((post) => followingSet.has(post.authorId)),
-    [feedTab, followingSet, publishedSocialPosts],
+      ? socialPosts
+      : socialPosts.filter((post) => followingSet.has(post.authorId)),
+    [feedTab, followingSet, socialPosts],
   )
   const profilePosts = useMemo(
-    () => (profileUserId ? publishedSocialPosts.filter((post) => post.authorId === profileUserId) : []),
-    [profileUserId, publishedSocialPosts],
+    () => (profileUserId ? socialPosts.filter((post) => post.authorId === profileUserId) : []),
+    [profileUserId, socialPosts],
   )
   const savedPosts = useMemo(
-    () => publishedSocialPosts.filter((post) => savedRecipeIds.has(post.id.replace(/^recipe-/, ''))),
-    [publishedSocialPosts, savedRecipeIds],
+    () => socialPosts.filter((post) => post.authorId !== effectiveCurrentUser.id && savedRecipeIds.has(post.id.replace(/^recipe-/, ''))),
+    [effectiveCurrentUser.id, savedRecipeIds, socialPosts],
   )
   const myRecipes = useMemo(
-    () => recipesCrud.filter((recipe) => recipe.userId === String(authUser?.id ?? '')),
-    [authUser?.id, recipesCrud],
+    () => recipesCrud.filter((recipe) => socialUserId(recipe.userId) === effectiveCurrentUser.id),
+    [effectiveCurrentUser.id, recipesCrud],
   )
   const favoriteRecipes = useMemo(
-    () => recipesCrud.filter((recipe) => recipe.userId !== String(authUser?.id ?? '') && savedRecipeIds.has(recipe.id)),
-    [authUser?.id, recipesCrud, savedRecipeIds],
+    () => recipesCrud.filter((recipe) => savedRecipeIds.has(recipe.id) && socialUserId(recipe.userId) !== effectiveCurrentUser.id),
+    [effectiveCurrentUser.id, recipesCrud, savedRecipeIds],
   )
   const profileUser = profileUserId ? effectiveUsersById[profileUserId] ?? null : null
 
   function toggleSavedRecipe(recipeId: string) {
+    const recipe = recipesCrud.find((item) => item.id === recipeId)
+    if (recipe && socialUserId(recipe.userId) === effectiveCurrentUser.id) {
+      return
+    }
+
     setSavedRecipeIds((current) => {
       const next = new Set(current)
       if (next.has(recipeId)) next.delete(recipeId)
       else next.add(recipeId)
-      storeSavedRecipeIds(next)
+      storeSavedRecipeIds(next, storageUserId)
       return next
     })
   }
 
-  function togglePublishedRecipe(recipeId: string) {
+  const updateProfileAvatar = useCallback((avatarUrl: string) => {
+    setAuthUser((current) => current ? { ...current, avatar_url: avatarUrl } : current)
+    setUsers((current) =>
+      current.map((user) => authUser && user.id === String(authUser.id) ? { ...user, avatarUrl } : user),
+    )
+  }, [authUser])
+
+  function publishRecipe(recipeId: string) {
     const recipe = recipesCrud.find((item) => item.id === recipeId)
-    if (!recipe || recipe.userId !== String(authUser?.id ?? '')) return
+    if (!recipe || socialUserId(recipe.userId) !== effectiveCurrentUser.id) return
 
     setPublishedRecipeIds((current) => {
+      if (current.has(recipeId)) return current
       const next = new Set(current)
-      if (next.has(recipeId)) next.delete(recipeId)
-      else next.add(recipeId)
+      next.add(recipeId)
       storePublishedRecipeIds(next)
       return next
     })
+    setCrudMessage('Receta publicada en el feed.')
+  }
+
+  function unpublishRecipe(recipeId: string) {
+    const recipe = recipesCrud.find((item) => item.id === recipeId)
+    if (!recipe || socialUserId(recipe.userId) !== effectiveCurrentUser.id) return
+
+    setPublishedRecipeIds((current) => {
+      if (!current.has(recipeId)) return current
+      const next = new Set(current)
+      next.delete(recipeId)
+      storePublishedRecipeIds(next)
+      return next
+    })
+    setCrudMessage('Receta retirada del feed.')
   }
 
   const openSocialProfile = useCallback((userId: string) => {
@@ -978,13 +1393,15 @@ function App() {
           ? 'Zona personal para gestionar tu perfil y preferencias'
         : `${labelForSection(visibleActiveSection)} en la estructura principal`
 
-  const renderProductCard = (p: Product, action: 'add' | 'remove') => {
+  const renderProductCard = (p: Product, mode: 'catalog' | 'list') => {
     const storeLabel = productStoreLabel(storeById.get(p.storeId))
     const imageFallback = <div className="product-photo-empty">{p.name.slice(0, 1).toUpperCase()}</div>
     const isChecked = checkedProductIds.has(p.id)
+    const isSaved = savedProductIds.has(p.id)
+    const showListActions = mode === 'list' || isSaved
 
     return (
-      <article key={p.id} className={`product-card ${action === 'remove' ? 'saved-product-card' : ''} ${isChecked ? 'is-checked' : ''}`}>
+      <article key={p.id} className={`product-card ${showListActions ? 'saved-product-card' : ''} ${isChecked ? 'is-checked' : ''}`}>
         <div className="catalog-thumb">
           {p.image ? (
             <button
@@ -1029,7 +1446,7 @@ function App() {
 
         <div className="product-card-footer">
           <span>Por {p.referenceAmount} {p.referenceUnit}</span>
-          {action === 'add' ? (
+          {!showListActions ? (
             <button type="button" className="secondary-btn" onClick={() => saveProductId(p.id)}>
               Añadir
             </button>
@@ -1130,16 +1547,20 @@ function App() {
               user={profileUser}
               posts={profilePosts}
               commentsByPostId={commentsByPostId}
+              likeCountsByPostId={likeCountsByPostId}
               currentUser={effectiveCurrentUser}
               usersById={effectiveUsersById}
               savedRecipeIds={savedRecipeIds}
               likedPostIds={likedPostSet}
               isFollowing={followingSet.has(profileUser.id)}
+              hasRequest={requestSet.has(profileUser.id)}
               onOpenProfile={openSocialProfile}
               onFollowUser={followUser}
+              onSendFriendRequest={sendFriendRequest}
               onAddComment={addComment}
               onToggleLike={toggleLike}
               onToggleSaveRecipe={toggleSavedRecipe}
+              onAddIngredientsToList={addRecipeIngredientsToProductList}
             />
           ) : (
             <section className="panel card-surface">
@@ -1155,6 +1576,7 @@ function App() {
             feedTab={feedTab}
             posts={feedPosts}
             commentsByPostId={commentsByPostId}
+            likeCountsByPostId={likeCountsByPostId}
             currentUser={effectiveCurrentUser}
             usersById={effectiveUsersById}
             savedRecipeIds={savedRecipeIds}
@@ -1163,6 +1585,7 @@ function App() {
             onAddComment={addComment}
             onToggleLike={toggleLike}
             onToggleSaveRecipe={toggleSavedRecipe}
+            onAddIngredientsToList={addRecipeIngredientsToProductList}
           />
         ) : visibleActiveSection === 'cuenta' ? (
           <SocialAccountPage
@@ -1170,6 +1593,7 @@ function App() {
             accountSection={accountSection}
             savedPosts={savedPosts}
             commentsByPostId={commentsByPostId}
+            likeCountsByPostId={likeCountsByPostId}
             usersById={effectiveUsersById}
             savedRecipeIds={savedRecipeIds}
             likedPostIds={likedPostSet}
@@ -1178,18 +1602,43 @@ function App() {
             onAddComment={addComment}
             onToggleLike={toggleLike}
             onToggleSaveRecipe={toggleSavedRecipe}
+            onAddIngredientsToList={addRecipeIngredientsToProductList}
             onSelectAccountSection={openAccountSection}
             onToggleDarkMode={(enabled) => setThemeMode(enabled ? 'dark' : 'light')}
+            onChangeAvatar={updateProfileAvatar}
           />
         ) : visibleActiveSection === 'productos' ? (
           <section className="panel card-surface product-panel">
             <div className="recipes-toolbar product-toolbar">
               <div className="panel-headline">
                 <p className="eyebrow">Productos</p>
-                <h2>Tus productos guardados</h2>
+                <h2>Gestión de productos</h2>
               </div>
               <button type="button" className="primary-btn" onClick={() => setProductSearchModalOpen(true)}>
                 Buscar y añadir
+              </button>
+            </div>
+
+            <div className="recipe-tabs product-tabs" role="tablist" aria-label="Apartados de productos">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={productTab === 'catalog'}
+                className={productTab === 'catalog' ? 'is-active' : ''}
+                onClick={() => setProductTab('catalog')}
+              >
+                Productos
+                <span>{discoveryProducts.length}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={productTab === 'list'}
+                className={productTab === 'list' ? 'is-active' : ''}
+                onClick={() => setProductTab('list')}
+              >
+                Mi lista
+                <span>{savedProducts.length}</span>
               </button>
             </div>
 
@@ -1197,34 +1646,38 @@ function App() {
               <section className="shopping-plan-panel product-utility-panel">
                 <div className="shopping-plan-header">
                   <div>
-                    <p className="eyebrow">Lista de compra</p>
-                    <h3>Gestiona y reutiliza tus productos guardados</h3>
+                    <p className="eyebrow">{productTab === 'catalog' ? 'Catálogo' : 'Lista de compra'}</p>
+                    <h3>{productTab === 'catalog' ? 'Explora productos de la base de datos' : 'Gestiona y reutiliza tus productos guardados'}</h3>
                   </div>
-                  <div className="crud-actions">
-                    <button type="button" className="ghost-btn" onClick={clearCheckedProducts} disabled={savedProducts.length === 0}>
-                      {checkedSavedProductIds.size > 0 ? 'Limpiar marcados' : 'Vaciar lista'}
-                    </button>
-                  </div>
+                  {productTab === 'list' ? (
+                    <div className="crud-actions">
+                      <button type="button" className="ghost-btn" onClick={clearCheckedProducts} disabled={visibleSavedProducts.length === 0}>
+                        {checkedSavedProductIds.size > 0 ? 'Limpiar marcados' : 'Vaciar lista'}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
 
-                <div className="shopping-plan-metrics">
-                  <article className="shopping-metric-card">
-                    <strong>{savedProducts.length}</strong>
-                    <span>productos visibles</span>
-                  </article>
-                  <article className="shopping-metric-card">
-                    <strong>{checkedSavedProducts.length}</strong>
-                    <span>marcados como comprados</span>
-                  </article>
-                  <article className="shopping-metric-card">
-                    <strong>{savedProductsCoveredStores}</strong>
-                    <span>tiendas implicadas</span>
-                  </article>
-                  <article className="shopping-metric-card">
-                    <strong>{savedProductsTotalCalories.toFixed(0)}</strong>
-                    <span>kcal por referencia</span>
-                  </article>
-                </div>
+                {productTab === 'list' ? (
+                  <div className="shopping-plan-metrics">
+                    <article className="shopping-metric-card">
+                      <strong>{visibleSavedProducts.length}</strong>
+                      <span>productos visibles</span>
+                    </article>
+                    <article className="shopping-metric-card">
+                      <strong>{checkedSavedProducts.length}</strong>
+                      <span>marcados como comprados</span>
+                    </article>
+                    <article className="shopping-metric-card">
+                      <strong>{savedProductsCoveredStores}</strong>
+                      <span>tiendas implicadas</span>
+                    </article>
+                    <article className="shopping-metric-card">
+                      <strong>{savedProductsTotalCalories.toFixed(0)}</strong>
+                      <span>kcal por referencia</span>
+                    </article>
+                  </div>
+                ) : null}
 
                 <div className="product-filter-grid">
                   <label className="product-filter-field">
@@ -1259,43 +1712,156 @@ function App() {
                 </div>
               </section>
 
-              <section className="product-discovery-panel">
-                <div className="section-inline-head">
-                  <div>
-                    <h3>Mi lista</h3>
-                    <p className="muted">Aquí se quedan los productos que marques como favoritos.</p>
+              {productTab === 'catalog' ? (
+                <section className="product-discovery-panel" role="tabpanel">
+                  <div className="section-inline-head">
+                    <div>
+                      <h3>Productos</h3>
+                      <p className="muted">Descubre productos de la base de datos. Si ya están en tu lista, puedes marcarlos o quitarlos desde aquí.</p>
+                    </div>
+                    <p className="product-page-range">
+                      {discoveryProducts.length === 0
+                        ? '0 productos'
+                        : `${productPageStart}-${productPageEnd} de ${discoveryProducts.length}`}
+                    </p>
                   </div>
-                </div>
-                {savedProducts.length === 0 ? (
-                  <article className="recipe-empty">
-                    <h3>{savedProductIds.size === 0 ? 'Aún no has añadido productos' : 'No hay productos visibles con los filtros actuales'}</h3>
-                    <p>{savedProductIds.size === 0 ? 'Usa la búsqueda o la muestra aleatoria para crear tu lista.' : 'Prueba a limpiar la búsqueda o cambiar la tienda seleccionada.'}</p>
-                  </article>
-                ) : (
-                  <div className="product-card-grid saved-product-grid">
-                    {savedProducts.map((p) => renderProductCard(p, 'remove'))}
+                  {discoveryProducts.length === 0 ? (
+                    <article className="recipe-empty">
+                      <h3>No hay productos disponibles con esos filtros</h3>
+                      <p>Ajusta la búsqueda, la tienda o el criterio de ordenación.</p>
+                    </article>
+                  ) : (
+                    <>
+                      <div className="product-card-grid">
+                        {paginatedDiscoveryProducts.map((p) => renderProductCard(p, 'catalog'))}
+                      </div>
+                      <div className="product-pagination" aria-label="Paginación de productos">
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => setProductPage((current) => Math.max(1, current - 1))}
+                          disabled={productPage === 1}
+                        >
+                          Anterior
+                        </button>
+                        <span>Página {productPage} de {productPageCount}</span>
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => setProductPage((current) => Math.min(productPageCount, current + 1))}
+                          disabled={productPage === productPageCount}
+                        >
+                          Siguiente
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </section>
+              ) : (
+                <section className="product-discovery-panel" role="tabpanel">
+                  <div className="section-inline-head">
+                    <div>
+                      <h3>Mi lista</h3>
+                      <p className="muted">Aquí se quedan los productos que marques como favoritos.</p>
+                    </div>
                   </div>
-                )}
-              </section>
 
-              <section className="product-discovery-panel">
-                <div className="section-inline-head">
-                  <div>
-                    <h3>Descubre productos de la base de datos</h3>
-                    <p className="muted">Una muestra útil según tus filtros. Añade solo los que quieras conservar.</p>
-                  </div>
-                </div>
-                {discoveryProducts.length === 0 ? (
-                  <article className="recipe-empty">
-                    <h3>No hay productos disponibles con esos filtros</h3>
-                    <p>Ajusta la búsqueda, la tienda o el criterio de ordenación.</p>
-                  </article>
-                ) : (
-                  <div className="product-card-grid">
-                    {discoveryProducts.map((p) => renderProductCard(p, 'add'))}
-                  </div>
-                )}
-              </section>
+                  {visibleSavedProducts.length === 0 ? (
+                    <article className="recipe-empty">
+                      <h3>Aún no has añadido productos</h3>
+                      <p>Añade productos desde la pestaña Productos o desde los ingredientes de una receta.</p>
+                    </article>
+                  ) : (
+                    <div className="product-card-grid saved-product-grid">
+                      {visibleSavedProducts.map((p) => renderProductCard(p, 'list'))}
+                    </div>
+                  )}
+
+                  <section className="product-folder-panel product-lists-panel" aria-label="Listas guardadas">
+                    <div className="product-folder-head product-lists-head">
+                      <div>
+                        <h4>Listas</h4>
+                        <p>Crea listas con portada propia y decide qué productos van dentro.</p>
+                      </div>
+                    </div>
+
+                    <div className="product-folder-simple-grid">
+                      <label className="product-folder-field">
+                        Título de la lista
+                        <input
+                          value={newProductFolderName}
+                          onChange={(event) => setNewProductFolderName(event.target.value)}
+                          placeholder="Ej. Tostadas, Cena lunes..."
+                          aria-label="Nombre de nueva lista"
+                        />
+                      </label>
+
+                      <div className="product-folder-field">
+                        <span>Foto de portada</span>
+                        <div className="product-folder-create-row">
+                          <label className={`image-picker-control ${newProductFolderImage ? 'has-image' : ''}`}>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(event) => readProductFolderImage(event, setNewProductFolderImage)}
+                              aria-label="Imagen de nueva lista"
+                            />
+                            {newProductFolderImage ? (
+                              <img src={newProductFolderImage} alt="" aria-hidden="true" />
+                            ) : (
+                              <span className="image-picker-icon" aria-hidden="true">+</span>
+                            )}
+                            <span className="image-picker-copy">
+                              <strong>{newProductFolderImage ? 'Foto seleccionada' : 'Elegir foto'}</strong>
+                              <small>{newProductFolderImage ? 'Pulsa para cambiarla' : 'Desde tu PC o móvil'}</small>
+                            </span>
+                          </label>
+                          <button type="button" className="secondary-btn" onClick={createProductFolder}>
+                            Crear
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {productFolders.length === 0 ? (
+                      <article className="recipe-empty">
+                        <h3>Aún no tienes listas creadas</h3>
+                        <p>Crea una lista para preparar compras, recetas o menús concretos.</p>
+                      </article>
+                    ) : (
+                      <div className="product-list-card-grid">
+                        {productFolders.map((folder) => {
+                          const cover = productFolderCover(folder)
+
+                          return (
+                            <article key={folder.id} className="product-list-card">
+                              <div className="product-list-cover">
+                                {cover ? (
+                                  <img src={cover} alt={`Portada de ${folder.name}`} loading="lazy" />
+                                ) : (
+                                  <span aria-hidden="true">{folder.name.slice(0, 1).toUpperCase()}</span>
+                                )}
+                              </div>
+                              <div className="product-list-copy">
+                                <strong>{folder.name}</strong>
+                                <p>{folder.productIds.length} producto{folder.productIds.length === 1 ? '' : 's'}</p>
+                              </div>
+                              <div className="product-list-actions">
+                                <button type="button" className="secondary-btn" onClick={() => openProductFolderEditor(folder)}>
+                                  Editar
+                                </button>
+                                <button type="button" className="ghost-btn" onClick={() => deleteProductFolder(folder.id)}>
+                                  Eliminar
+                                </button>
+                              </div>
+                            </article>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </section>
+                </section>
+              )}
             </div>
           </section>
         ) : visibleActiveSection === 'tiendas' ? (
@@ -1305,9 +1871,6 @@ function App() {
                 <p className="eyebrow">Tiendas</p>
                 <h2>Tiendas detectadas</h2>
               </div>
-              <button type="button" className="primary-btn" onClick={() => void syncOpenFoodFactsStores()} disabled={storeSyncLoading}>
-                {storeSyncLoading ? 'Sincronizando...' : 'Sincronizar productos'}
-              </button>
             </div>
             <div className="crud-list">
               {visibleStoresCrud.map((s) => {
@@ -1382,29 +1945,26 @@ function App() {
                   ) : myRecipes.map((recipe) => (
                     <article key={recipe.id} className="recipe-list-card">
                       {recipe.image ? <img src={recipe.image} alt={recipe.title} /> : <div className="recipe-image-placeholder" />}
-                      <div className="recipe-list-content">
-                        <button type="button" className="recipe-list-body" onClick={() => void openRecipeDetail(recipe.id)}>
-                          <strong>{recipe.title}</strong>
-                          <p>{recipe.description || 'Sin descripción'}</p>
-                          <div className="recipe-macro-row">
-                            <span>{recipe.caloriesTotal.toFixed(0)} kcal</span>
-                            <span>{recipe.proteinTotal.toFixed(1)} g proteínas</span>
-                            <span>{recipe.carbsTotal.toFixed(1)} g hidratos</span>
-                            <span>{recipe.fatTotal.toFixed(1)} g grasas</span>
-                          </div>
-                        </button>
-                        <div className="recipe-list-actions">
-                          <span className={`recipe-publication-status ${publishedRecipeIds.has(recipe.id) ? 'is-public' : ''}`}>
-                            {publishedRecipeIds.has(recipe.id) ? 'Publicada en el feed' : 'Privada'}
-                          </span>
-                          <button
-                            type="button"
-                            className={publishedRecipeIds.has(recipe.id) ? 'ghost-btn' : 'secondary-btn'}
-                            onClick={() => togglePublishedRecipe(recipe.id)}
-                          >
-                            {publishedRecipeIds.has(recipe.id) ? 'Quitar del feed' : 'Publicar en feed'}
-                          </button>
+                      <button type="button" className="recipe-list-body" onClick={() => void openRecipeDetail(recipe.id)}>
+                        <strong>{recipe.title}</strong>
+                        <p>{recipe.description || 'Sin descripción'}</p>
+                        <div className="recipe-macro-row">
+                          <span>{recipe.caloriesTotal.toFixed(0)} kcal</span>
+                          <span>{recipe.proteinTotal.toFixed(1)} g proteínas</span>
+                          <span>{recipe.carbsTotal.toFixed(1)} g hidratos</span>
+                          <span>{recipe.fatTotal.toFixed(1)} g grasas</span>
                         </div>
+                      </button>
+                      <div className="recipe-list-actions">
+                        {publishedRecipeIds.has(recipe.id) ? (
+                          <button type="button" className="secondary-btn" onClick={() => unpublishRecipe(recipe.id)}>
+                            Quitar del feed
+                          </button>
+                        ) : (
+                          <button type="button" className="primary-btn" onClick={() => publishRecipe(recipe.id)}>
+                            Publicar en feed
+                          </button>
+                        )}
                       </div>
                     </article>
                   ))}
@@ -1428,16 +1988,19 @@ function App() {
                   ) : favoriteRecipes.map((recipe) => (
                     <article key={recipe.id} className="recipe-list-card">
                       {recipe.image ? <img src={recipe.image} alt={recipe.title} /> : <div className="recipe-image-placeholder" />}
-                      <div className="recipe-list-content">
-                        <button type="button" className="recipe-list-body" onClick={() => void openRecipeDetail(recipe.id)}>
-                          <strong>{recipe.title}</strong>
-                          <p>{recipe.description || 'Sin descripción'}</p>
-                          <div className="recipe-macro-row">
-                            <span>{recipe.caloriesTotal.toFixed(0)} kcal</span>
-                            <span>{recipe.proteinTotal.toFixed(1)} g proteínas</span>
-                            <span>{recipe.carbsTotal.toFixed(1)} g hidratos</span>
-                            <span>{recipe.fatTotal.toFixed(1)} g grasas</span>
-                          </div>
+                      <button type="button" className="recipe-list-body" onClick={() => void openRecipeDetail(recipe.id)}>
+                        <strong>{recipe.title}</strong>
+                        <p>{recipe.description || 'Sin descripción'}</p>
+                        <div className="recipe-macro-row">
+                          <span>{recipe.caloriesTotal.toFixed(0)} kcal</span>
+                          <span>{recipe.proteinTotal.toFixed(1)} g proteínas</span>
+                          <span>{recipe.carbsTotal.toFixed(1)} g hidratos</span>
+                          <span>{recipe.fatTotal.toFixed(1)} g grasas</span>
+                        </div>
+                      </button>
+                      <div className="recipe-list-actions">
+                        <button type="button" className="secondary-btn" onClick={() => void openRecipeDetailWithHealth(recipe.id)}>
+                          Comprobar salud
                         </button>
                       </div>
                     </article>
@@ -1503,7 +2066,14 @@ function App() {
                 </label>
                 <label className="recipe-field recipe-file-field">
                   Imagen de la receta
-                  <input type="file" accept="image/*" onChange={(event) => handleRecipeImageFile(event.target.files?.[0] ?? null)} />
+                  <span className="recipe-upload-control">
+                    <input type="file" accept="image/*" onChange={(event) => handleRecipeImageFile(event.target.files?.[0] ?? null)} />
+                    <span className="recipe-upload-icon" aria-hidden="true">+</span>
+                    <span className="recipe-upload-copy">
+                      <span>Subir imagen</span>
+                      <small>{recipeImageName || 'PNG, JPG o WEBP'}</small>
+                    </span>
+                  </span>
                 </label>
                 {recipeForm.imageUrl ? (
                   <img className="recipe-image-preview" src={recipeForm.imageUrl} alt="Vista previa de la receta" />
@@ -1674,7 +2244,7 @@ function App() {
       )}
 
       {(selectedRecipeDetail || recipeDetailLoading) && (
-        <div className="modal-backdrop" role="presentation" onClick={() => setSelectedRecipeDetail(null)}>
+        <div className="modal-backdrop" role="presentation" onClick={closeRecipeDetail}>
           <section className="recipe-modal recipe-detail-modal card-surface" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             {recipeDetailLoading ? (
               <p className="muted">Cargando receta...</p>
@@ -1685,20 +2255,28 @@ function App() {
                     <p className="eyebrow">Receta</p>
                     <h2>{selectedRecipeDetail.title}</h2>
                   </div>
-                  <button type="button" className="icon-btn" aria-label="Cerrar" onClick={() => setSelectedRecipeDetail(null)}>×</button>
+                  <button type="button" className="icon-btn" aria-label="Cerrar" onClick={closeRecipeDetail}>×</button>
                 </div>
                 <div className="recipe-detail-hero">
                   {selectedRecipeDetail.image_url ? <img src={selectedRecipeDetail.image_url} alt={selectedRecipeDetail.title} /> : <div className="recipe-image-placeholder" />}
                   <div>
                     <p>{selectedRecipeDetail.description || 'Sin descripción'}</p>
                     <div className="recipe-macro-row">
-                      <span>{recipesCrud.find((recipe) => recipe.id === String(selectedRecipeDetail.id))?.caloriesTotal.toFixed(0) ?? '0'} kcal</span>
-                      <span>{recipesCrud.find((recipe) => recipe.id === String(selectedRecipeDetail.id))?.proteinTotal.toFixed(1) ?? '0.0'} g proteínas</span>
-                      <span>{recipesCrud.find((recipe) => recipe.id === String(selectedRecipeDetail.id))?.carbsTotal.toFixed(1) ?? '0.0'} g hidratos</span>
-                      <span>{recipesCrud.find((recipe) => recipe.id === String(selectedRecipeDetail.id))?.fatTotal.toFixed(1) ?? '0.0'} g grasas</span>
+                      <span>{selectedRecipeSummary?.caloriesTotal.toFixed(0) ?? '0'} kcal</span>
+                      <span>{selectedRecipeSummary?.proteinTotal.toFixed(1) ?? '0.0'} g proteínas</span>
+                      <span>{selectedRecipeSummary?.carbsTotal.toFixed(1) ?? '0.0'} g hidratos</span>
+                      <span>{selectedRecipeSummary?.fatTotal.toFixed(1) ?? '0.0'} g grasas</span>
+                    </div>
+                    <div className="recipe-detail-actions">
+                      <button type="button" className="secondary-btn" onClick={() => setShowRecipeDetailHealth((current) => !current)}>
+                        {showRecipeDetailHealth ? 'Ocultar salud' : 'Comprobar salud'}
+                      </button>
                     </div>
                   </div>
                 </div>
+                {showRecipeDetailHealth && selectedRecipeSocialRecipe ? (
+                  <RecipeHealthPanel recipe={selectedRecipeSocialRecipe} sourceId={`recipe-detail-${selectedRecipeDetail.id}`} />
+                ) : null}
                 {selectedRecipeDetail.steps ? (
                   <section className="recipe-detail-section">
                     <h3>Elaboración</h3>
@@ -1786,6 +2364,251 @@ function App() {
           </section>
         </div>
       )}
+
+      {productFolderEditorOpen && activeProductFolder ? (
+        <div className="modal-backdrop" role="presentation" onClick={closeProductFolderEditor}>
+          <section
+            className="product-folder-modal product-folder-editor-modal card-surface"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="product-folder-editor-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="recipe-modal-header">
+              <div>
+                <p className="eyebrow">Lista</p>
+                <h2 id="product-folder-editor-title">Editar {activeProductFolder.name}</h2>
+              </div>
+              <button type="button" className="icon-btn" aria-label="Cerrar" onClick={closeProductFolderEditor}>×</button>
+            </div>
+
+            <div className="product-folder-edit-grid">
+              <div className="product-list-cover product-list-cover-large">
+                {editedProductFolderImage || productFolderCover(activeProductFolder) ? (
+                  <img src={editedProductFolderImage || (productFolderCover(activeProductFolder) as string)} alt={`Portada de ${activeProductFolder.name}`} />
+                ) : (
+                  <span aria-hidden="true">{activeProductFolder.name.slice(0, 1).toUpperCase()}</span>
+                )}
+              </div>
+              <div className="product-folder-edit-fields">
+                <label className="product-folder-field">
+                  Nombre de la lista
+                  <input
+                    value={editedProductFolderName}
+                    onChange={(event) => setEditedProductFolderName(event.target.value)}
+                    placeholder="Nombre de la lista"
+                  />
+                </label>
+                <div className="product-folder-field">
+                  <span>Foto de portada</span>
+                  <label className={`image-picker-control ${editedProductFolderImage ? 'has-image' : ''}`}>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => readProductFolderImage(event, setEditedProductFolderImage)}
+                      aria-label="Cambiar imagen de la lista"
+                    />
+                    {editedProductFolderImage ? (
+                      <img src={editedProductFolderImage} alt="" aria-hidden="true" />
+                    ) : (
+                      <span className="image-picker-icon" aria-hidden="true">+</span>
+                    )}
+                    <span className="image-picker-copy">
+                      <strong>{editedProductFolderImage ? 'Foto seleccionada' : 'Elegir foto'}</strong>
+                      <small>{editedProductFolderImage ? 'Pulsa para cambiarla' : 'Desde tu PC o móvil'}</small>
+                    </span>
+                  </label>
+                </div>
+                <button type="button" className="secondary-btn" onClick={saveActiveProductFolderDetails}>
+                  Guardar cambios
+                </button>
+              </div>
+            </div>
+
+            <section className="product-folder-editor-section">
+              <div className="section-inline-head">
+                <div>
+                  <h3>Productos de la lista</h3>
+                  <p className="muted">{activeProductFolder.productIds.length} producto{activeProductFolder.productIds.length === 1 ? '' : 's'} guardado{activeProductFolder.productIds.length === 1 ? '' : 's'} aquí.</p>
+                </div>
+              </div>
+              {activeProductFolder.productIds.length === 0 ? (
+                <article className="recipe-empty">
+                  <h3>Esta lista está vacía</h3>
+                  <p>Añade productos desde el buscador inferior.</p>
+                </article>
+              ) : (
+                <div className="folder-product-picker-list">
+                  {activeProductFolder.productIds.map((productId) => {
+                    const product = productById.get(productId)
+                    if (!product) return null
+
+                    return (
+                      <div key={productId} className="folder-product-picker-item product-folder-current-product">
+                        {product.image && !brokenProductImageIds.has(product.id) ? (
+                          <img src={product.image} alt={product.name} />
+                        ) : (
+                          <span className="product-photo-empty" aria-hidden="true">{product.name.slice(0, 1).toUpperCase()}</span>
+                        )}
+                        <span>
+                          <strong>{product.name}</strong>
+                          <small>{product.brand || 'Sin marca'} · {productStoreLabel(storeById.get(product.storeId))}</small>
+                        </span>
+                        <button type="button" className="ghost-btn" onClick={() => removeProductFromActiveFolder(product.id)}>
+                          Eliminar
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="product-folder-editor-section">
+              <label className="product-folder-field">
+                Añadir productos
+                <input
+                  type="search"
+                  value={folderProductSearch}
+                  onChange={(event) => setFolderProductSearch(event.target.value)}
+                  placeholder="Buscar por nombre, marca o tienda"
+                />
+              </label>
+
+              <p className="product-page-range">
+                {filteredFolderProductOptions.length === 0
+                  ? '0 productos'
+                  : `${folderProductPageStart}-${folderProductPageEnd} de ${filteredFolderProductOptions.length}`}
+              </p>
+
+              <div className="folder-product-picker-list">
+                {filteredFolderProductOptions.length === 0 ? (
+                  <article className="recipe-empty">
+                    <h3>No hay productos para añadir</h3>
+                    <p>{folderProductOptions.length === 0 ? 'Todos los productos disponibles ya están en esta lista.' : 'Prueba con otra búsqueda.'}</p>
+                  </article>
+                ) : paginatedFolderProductOptions.map((product) => (
+                  <button
+                    key={product.id}
+                    type="button"
+                    className="folder-product-picker-item"
+                    onClick={() => addProductToActiveFolder(product.id)}
+                  >
+                    {product.image && !brokenProductImageIds.has(product.id) ? (
+                      <img src={product.image} alt={product.name} />
+                    ) : (
+                      <span className="product-photo-empty" aria-hidden="true">{product.name.slice(0, 1).toUpperCase()}</span>
+                    )}
+                    <span>
+                      <strong>{product.name}</strong>
+                      <small>{product.brand || 'Sin marca'} · {productStoreLabel(storeById.get(product.storeId))}</small>
+                    </span>
+                    <em>Añadir</em>
+                  </button>
+                ))}
+              </div>
+
+              {filteredFolderProductOptions.length > folderPickerProductsPerPage ? (
+                <div className="product-pagination" aria-label="Paginación de productos para lista">
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    onClick={() => setFolderProductPage((current) => Math.max(1, current - 1))}
+                    disabled={folderProductPage === 1}
+                  >
+                    Anterior
+                  </button>
+                  <span>Página {folderProductPage} de {folderProductPageCount}</span>
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    onClick={() => setFolderProductPage((current) => Math.min(folderProductPageCount, current + 1))}
+                    disabled={folderProductPage === folderProductPageCount}
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              ) : null}
+            </section>
+
+            <div className="product-folder-modal-actions">
+              <button type="button" className="ghost-btn" onClick={deleteActiveProductFolder}>
+                Eliminar lista
+              </button>
+              <button type="button" className="secondary-btn" onClick={closeProductFolderEditor}>
+                Cerrar
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {productFolderPrompt ? (
+        <div className="modal-backdrop" role="presentation" onClick={leaveProductsInGeneralList}>
+          <section
+            className="product-folder-modal card-surface"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="product-folder-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="recipe-modal-header">
+              <div>
+                <p className="eyebrow">Mi lista</p>
+                <h2 id="product-folder-modal-title">{productFolderPrompt.title}</h2>
+              </div>
+              <button type="button" className="icon-btn" aria-label="Cerrar" onClick={leaveProductsInGeneralList}>×</button>
+            </div>
+
+            <p className="muted">¿Quieres guardarlo en una lista concreta o dejarlo solo en la lista general?</p>
+
+            <div className="product-folder-modal-products">
+              {productFolderPrompt.productIds.map((productId) => {
+                const product = productById.get(productId)
+                return (
+                  <span key={productId}>{product?.name ?? `Producto ${productId}`}</span>
+                )
+              })}
+            </div>
+
+            {productFolders.length > 0 ? (
+              <div className="product-folder-modal-grid">
+                {productFolders.map((folder) => (
+                  <button
+                    key={folder.id}
+                    type="button"
+                    className="product-folder-choice"
+                    onClick={() => assignProductsToFolder(folder.id, productFolderPrompt.productIds)}
+                  >
+                    <strong>{folder.name}</strong>
+                    <span>{folder.productIds.length} productos</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="muted">Aún no tienes listas creadas.</p>
+            )}
+
+            <div className="product-folder-modal-create">
+              <input
+                value={promptProductFolderName}
+                onChange={(event) => setPromptProductFolderName(event.target.value)}
+                placeholder="Crear lista nueva"
+                aria-label="Crear lista nueva para estos productos"
+              />
+              <button type="button" className="secondary-btn" onClick={createPromptProductFolder}>
+                Crear y guardar
+              </button>
+            </div>
+
+            <div className="product-folder-modal-actions">
+              <button type="button" className="ghost-btn" onClick={leaveProductsInGeneralList}>
+                Dejar en Mi lista
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {productImagePreview && (
         <div className="modal-backdrop product-image-backdrop" role="presentation" onClick={() => setProductImagePreview(null)}>

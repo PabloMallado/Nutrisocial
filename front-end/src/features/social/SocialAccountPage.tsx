@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import type { ChangeEvent } from 'react'
 import { PostCard } from './components/PostCard'
 import type { AccountSection, SocialComment, SocialPost, SocialUser } from './types'
 
@@ -7,6 +8,7 @@ type SocialAccountPageProps = {
   accountSection: AccountSection
   savedPosts: SocialPost[]
   commentsByPostId: Record<string, SocialComment[]>
+  likeCountsByPostId: Record<string, number>
   usersById: Record<string, SocialUser>
   savedRecipeIds: Set<string>
   likedPostIds: Set<string>
@@ -15,8 +17,10 @@ type SocialAccountPageProps = {
   onAddComment: (postId: string, message: string) => void
   onToggleLike: (postId: string) => void
   onToggleSaveRecipe: (recipeId: string) => void
+  onAddIngredientsToList: (ingredients: SocialPost['recipe']['ingredients']) => void
   onSelectAccountSection: (section: AccountSection) => void
   onToggleDarkMode: (enabled: boolean) => void
+  onChangeAvatar: (avatarUrl: string) => void
 }
 
 const sectionMeta: Record<AccountSection, { title: string; description: string }> = {
@@ -52,6 +56,7 @@ export function SocialAccountPage({
   accountSection,
   savedPosts,
   commentsByPostId,
+  likeCountsByPostId,
   usersById,
   savedRecipeIds,
   likedPostIds,
@@ -60,10 +65,13 @@ export function SocialAccountPage({
   onAddComment,
   onToggleLike,
   onToggleSaveRecipe,
+  onAddIngredientsToList,
   onSelectAccountSection,
   onToggleDarkMode,
+  onChangeAvatar,
 }: SocialAccountPageProps) {
   const activeMeta = sectionMeta[accountSection]
+  const avatarInputRef = useRef<HTMLInputElement>(null)
   const [settingsModal, setSettingsModal] = useState<SettingsModal>(null)
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null)
   const [profileDraft, setProfileDraft] = useState({
@@ -96,15 +104,53 @@ export function SocialAccountPage({
     setSettingsModal(null)
   }
 
+  function handleAvatarFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        onChangeAvatar(reader.result)
+        setSettingsMessage('Foto de perfil actualizada para esta sesion.')
+      }
+    }
+    reader.readAsDataURL(file)
+    event.target.value = ''
+  }
+
   return (
     <section className="social-account-page">
       <header className="social-account-page-header">
         <div className="social-account-page-top">
-          <img
-            className="social-avatar social-avatar-xl"
-            src={currentUser.avatarUrl}
-            alt={`Avatar de ${currentUser.displayName}`}
-          />
+          <div className="social-account-avatar-editor">
+            <button
+              type="button"
+              className="social-avatar-edit-button"
+              aria-label="Cambiar foto de perfil"
+              onClick={() => avatarInputRef.current?.click()}
+            >
+              <img
+                className="social-avatar social-avatar-xl"
+                src={currentUser.avatarUrl}
+                alt={`Avatar de ${currentUser.displayName}`}
+              />
+              <span className="social-avatar-edit-overlay" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M4 20h4.7L19.9 8.8a2.2 2.2 0 0 0 0-3.1l-1.6-1.6a2.2 2.2 0 0 0-3.1 0L4 15.3V20Zm2-2v-1.9l8.7-8.7 1.9 1.9L7.9 18H6Zm10-12 1-1a.3.3 0 0 1 .4 0L19 6.6a.3.3 0 0 1 0 .4l-1 1L16 6Z" />
+                </svg>
+              </span>
+            </button>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              className="social-avatar-file-input"
+              aria-label="Seleccionar nueva foto de perfil"
+              tabIndex={-1}
+              onChange={handleAvatarFileChange}
+            />
+          </div>
           <div className="social-account-page-copy">
             <p className="social-post-kicker">Centro de cuenta</p>
             <h2>{currentUser.displayName}</h2>
@@ -197,10 +243,12 @@ export function SocialAccountPage({
                     usersById={usersById}
                     isSaved={savedRecipeIds.has(post.id.replace(/^recipe-/, ''))}
                     isLiked={likedPostIds.has(post.id)}
+                    likesCount={likeCountsByPostId[post.id] ?? 0}
                     onOpenProfile={onOpenProfile}
                     onAddComment={onAddComment}
                     onToggleLike={onToggleLike}
                     onToggleSaveRecipe={() => onToggleSaveRecipe(post.id.replace(/^recipe-/, ''))}
+                    onAddIngredientsToList={onAddIngredientsToList}
                   />
                 )
               })}

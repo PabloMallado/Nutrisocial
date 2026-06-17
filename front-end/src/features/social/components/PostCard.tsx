@@ -1,8 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { analyzeRecipeHealth } from '../nutrition-analysis'
+import { RecipeHealthPanel } from './RecipeHealthPanel'
 import { formatRelativeDate } from '../time'
-import type { SocialComment, SocialPost, SocialUser } from '../types'
+import { apiRequest } from '../../../services/http'
+import type { SocialComment, SocialPost, SocialRecipeIngredient, SocialUser } from '../types'
+
+type RecipeDetailResponse = {
+  prep_time: number
+  servings: number
+  difficulty: string
+  calories_total: number | string
+  protein_total: number | string
+  carbs_total: number | string
+  fat_total: number | string
+  ingredients: Array<{
+    product_id: number | string
+    name: string
+    quantity: number | string
+    unit: string | null
+  }>
+}
 
 type PostCardProps = {
   post: SocialPost
@@ -12,10 +29,12 @@ type PostCardProps = {
   usersById: Record<string, SocialUser>
   isSaved: boolean
   isLiked: boolean
+  likesCount: number
   onOpenProfile: (userId: string) => void
   onAddComment: (postId: string, message: string) => void
   onToggleLike: (postId: string) => void
   onToggleSaveRecipe: () => void
+  onAddIngredientsToList: (ingredients: SocialRecipeIngredient[]) => void
 }
 
 export function PostCard({
@@ -26,16 +45,64 @@ export function PostCard({
   usersById,
   isSaved,
   isLiked,
+  likesCount,
   onOpenProfile,
   onAddComment,
   onToggleLike,
   onToggleSaveRecipe,
+  onAddIngredientsToList,
 }: PostCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [showHealthAnalysis, setShowHealthAnalysis] = useState(false)
   const [draftComment, setDraftComment] = useState('')
-  const healthAnalysis = analyzeRecipeHealth(post.recipe)
-  const visibleLikesCount = post.likesCount + (isLiked ? 1 : 0)
+  const [recipeDetail, setRecipeDetail] = useState<RecipeDetailResponse | null>(null)
+  const [recipeDetailError, setRecipeDetailError] = useState<string | null>(null)
+  const visibleLikesCount = post.likesCount + likesCount
+  const isOwnPost = author.id === currentUser.id
+  const recipeId = post.id.replace(/^recipe-/, '')
+  const displayedRecipe = recipeDetail
+    ? {
+        ...post.recipe,
+        difficulty: recipeDetail.difficulty,
+        prepTimeMinutes: Number(recipeDetail.prep_time ?? post.recipe.prepTimeMinutes),
+        servings: Number(recipeDetail.servings ?? post.recipe.servings),
+        calories: Math.round(Number(recipeDetail.calories_total ?? post.recipe.calories)),
+        protein: Number(Number(recipeDetail.protein_total ?? post.recipe.protein).toFixed(1)),
+        carbs: Number(Number(recipeDetail.carbs_total ?? post.recipe.carbs).toFixed(1)),
+        fat: Number(Number(recipeDetail.fat_total ?? post.recipe.fat).toFixed(1)),
+        ingredients: recipeDetail.ingredients.map((ingredient) => ({
+          productId: String(ingredient.product_id),
+          name: ingredient.name,
+          amount: `${Number(ingredient.quantity ?? 0).toLocaleString('es-ES', { maximumFractionDigits: 2 })} ${ingredient.unit || 'unidad'}`,
+        })),
+      }
+    : post.recipe
+  const ingredientProductIds = displayedRecipe.ingredients
+    .map((ingredient) => ingredient.productId)
+    .filter((productId): productId is string => Boolean(productId))
+
+  useEffect(() => {
+    if (!isExpanded || post.recipe.ingredients.length > 0 || recipeDetail || recipeDetailError) {
+      return
+    }
+
+    let isCancelled = false
+    apiRequest<RecipeDetailResponse>(`/api/recipes/${recipeId}`)
+      .then((detail) => {
+        if (!isCancelled) {
+          setRecipeDetail(detail)
+        }
+      })
+      .catch((error: Error) => {
+        if (!isCancelled) {
+          setRecipeDetailError(error.message)
+        }
+      })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [isExpanded, post.recipe.ingredients.length, recipeDetail, recipeDetailError, recipeId])
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -64,7 +131,8 @@ export function PostCard({
         </button>
 
         <div className="social-post-top-actions">
-          <button
+          {!isOwnPost ? (
+            <button
             type="button"
             className={`social-save-btn ${isSaved ? 'is-saved' : ''}`}
             aria-label={isSaved ? 'Quitar receta guardada' : 'Guardar receta'}
@@ -72,7 +140,8 @@ export function PostCard({
             onClick={onToggleSaveRecipe}
           >
             <span aria-hidden="true">{isSaved ? '★' : '☆'}</span>
-          </button>
+            </button>
+          ) : null}
           <button
             type="button"
             className="social-expand-btn"
@@ -98,7 +167,7 @@ export function PostCard({
           <span>{formatRelativeDate(post.createdAt)}</span>
           <span>{visibleLikesCount} me gusta</span>
           <span>{comments.length} comentarios</span>
-          <span>{post.recipe.calories} kcal</span>
+          <span>{displayedRecipe.calories} kcal</span>
         </div>
       </div>
 
@@ -132,112 +201,71 @@ export function PostCard({
             <div className="social-recipe-head">
               <div>
                 <p className="social-post-kicker">Ficha de receta</p>
-                <h4>{post.recipe.title}</h4>
+                <h4>{displayedRecipe.title}</h4>
                 <p className="social-recipe-subtitle">
-                  {post.recipe.description}
+                  {displayedRecipe.description}
                 </p>
               </div>
-              <span className="social-recipe-pill">{post.recipe.difficulty}</span>
+              <span className="social-recipe-pill">{displayedRecipe.difficulty}</span>
             </div>
 
             <div className="social-recipe-stats">
               <article>
-                <strong>{post.recipe.servings}</strong>
+                <strong>{displayedRecipe.servings}</strong>
                 <span>raciones</span>
               </article>
               <article>
-                <strong>{post.recipe.prepTimeMinutes} min</strong>
+                <strong>{displayedRecipe.prepTimeMinutes} min</strong>
                 <span>preparación</span>
               </article>
               <article>
-                <strong>{post.recipe.protein} g</strong>
+                <strong>{displayedRecipe.protein} g</strong>
                 <span>proteína</span>
               </article>
               <article>
-                <strong>{post.recipe.carbs} g</strong>
+                <strong>{displayedRecipe.carbs} g</strong>
                 <span>carbohidratos</span>
               </article>
               <article>
-                <strong>{post.recipe.fat} g</strong>
+                <strong>{displayedRecipe.fat} g</strong>
                 <span>grasas</span>
               </article>
             </div>
 
             {showHealthAnalysis ? (
-              <section className="social-health-panel" aria-label="Analisis nutricional de la receta">
-                <div className="social-health-score">
-                  <strong>{healthAnalysis.score}</strong>
-                  <span>/100</span>
-                </div>
-
-                <div className="social-health-copy">
-                  <div className="social-health-head">
-                    <div>
-                      <p className="social-post-kicker">Nivel de salud</p>
-                      <h5>{healthAnalysis.level}</h5>
-                    </div>
-                    <div className="social-health-tags">
-                      {healthAnalysis.tags.map((tag) => (
-                        <span key={`${post.id}-${tag}`}>{tag}</span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <p>{healthAnalysis.summary}</p>
-
-                  <div className="social-health-columns">
-                    <div>
-                      <h6>Puntos fuertes</h6>
-                      <ul>
-                        {healthAnalysis.highlights.map((highlight) => (
-                          <li key={`${post.id}-${highlight}`}>{highlight}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {healthAnalysis.warnings.length > 0 ? (
-                      <div>
-                        <h6>A tener en cuenta</h6>
-                        <ul>
-                          {healthAnalysis.warnings.map((warning) => (
-                            <li key={`${post.id}-${warning}`}>{warning}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-
-                    {healthAnalysis.suggestions.length > 0 ? (
-                      <div>
-                        <h6>Como mejorarla</h6>
-                        <ul>
-                          {healthAnalysis.suggestions.map((suggestion) => (
-                            <li key={`${post.id}-${suggestion}`}>{suggestion}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </section>
+              <RecipeHealthPanel recipe={displayedRecipe} sourceId={post.id} />
             ) : null}
 
             <div className="social-recipe-grid">
               <div className="social-recipe-block">
                 <h5>Ingredientes</h5>
                 <ul className="social-recipe-list">
-                  {post.recipe.ingredients.map((ingredient) => (
+                  {displayedRecipe.ingredients.map((ingredient) => (
                     <li key={`${post.id}-${ingredient.name}`}>
                       <span>{ingredient.name}</span>
                       <strong>{ingredient.amount}</strong>
                     </li>
                   ))}
                 </ul>
+                {displayedRecipe.ingredients.length === 0 ? (
+                  <p className="social-recipe-empty-text">
+                    {recipeDetailError ?? 'Cargando ingredientes...'}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className="social-recipe-add-products"
+                  onClick={() => onAddIngredientsToList(displayedRecipe.ingredients)}
+                  disabled={ingredientProductIds.length === 0}
+                >
+                  Añadir productos
+                </button>
               </div>
 
               <div className="social-recipe-block">
                 <h5>Preparación</h5>
                 <ol className="social-recipe-steps">
-                  {post.recipe.steps.map((step) => (
+                  {displayedRecipe.steps.map((step) => (
                     <li key={`${post.id}-${step}`}>{step}</li>
                   ))}
                 </ol>
