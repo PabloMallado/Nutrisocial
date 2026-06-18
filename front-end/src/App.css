@@ -723,6 +723,140 @@
   gap: 0.85rem;
 }
 
+.objective-mode-card {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.92fr) minmax(280px, 1.4fr);
+  gap: 1rem;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--line));
+  border-radius: 1.05rem;
+  padding: 1rem;
+  background:
+    radial-gradient(circle at 8% 12%, color-mix(in srgb, var(--primary) 18%, transparent), transparent 12rem),
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 8%, var(--bg-card-solid)), var(--bg-card-solid));
+  box-shadow: var(--shadow);
+}
+
+.objective-mode-card::after {
+  content: '';
+  position: absolute;
+  right: -3.2rem;
+  top: -4.6rem;
+  width: 11rem;
+  height: 11rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, transparent);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 36%, color-mix(in srgb, var(--primary) 8%, transparent) 37% 42%, transparent 43%);
+  pointer-events: none;
+}
+
+.objective-mode-card.is-compact {
+  margin: 0.1rem 0 0.95rem;
+  box-shadow: none;
+}
+
+.objective-mode-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 0.28rem;
+}
+
+.objective-mode-copy h2,
+.objective-mode-copy h3,
+.objective-mode-copy p {
+  margin: 0;
+}
+
+.objective-mode-copy h2 {
+  font-size: clamp(1.42rem, 2.2vw, 2rem);
+}
+
+.objective-mode-copy h3 {
+  font-size: 1.2rem;
+}
+
+.objective-mode-copy p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.objective-mode-copy strong {
+  width: fit-content;
+  margin-top: 0.18rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--line));
+  border-radius: 999px;
+  padding: 0.26rem 0.62rem;
+  background: color-mix(in srgb, var(--primary) 12%, var(--bg-card-solid));
+  color: var(--primary-strong);
+  font-size: 0.82rem;
+}
+
+.objective-mode-options {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.48rem;
+}
+
+.objective-mode-chip {
+  --objective-color: var(--primary);
+  min-height: 38px;
+  border: 1px solid color-mix(in srgb, var(--objective-color) 34%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--objective-color) 8%, var(--bg-card-solid));
+  color: color-mix(in srgb, var(--objective-color) 76%, var(--text));
+  padding: 0.42rem 0.72rem;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.objective-mode-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px color-mix(in srgb, var(--objective-color) 13%, transparent);
+}
+
+.objective-mode-chip.is-active {
+  background:
+    radial-gradient(circle at 20% 0, color-mix(in srgb, #fff 24%, transparent), transparent 2.8rem),
+    var(--objective-color);
+  border-color: var(--objective-color);
+  color: #fff;
+  box-shadow: 0 14px 24px color-mix(in srgb, var(--objective-color) 23%, transparent);
+}
+
+.objective-mode-chip.is-muscle {
+  --objective-color: #157f52;
+}
+
+.objective-mode-chip.is-performance {
+  --objective-color: #1d6ed0;
+}
+
+.objective-mode-chip.is-balanced {
+  --objective-color: var(--primary);
+}
+
+.objective-mode-chip.is-light {
+  --objective-color: #719622;
+}
+
+.objective-mode-chip.is-occasional {
+  --objective-color: #c46a18;
+}
+
+.objective-mode-chip.is-improvable {
+  --objective-color: var(--warn);
+}
+
 .recipe-empty {
   display: grid;
   gap: 0.3rem;
@@ -746,6 +880,27 @@
   border: 1px solid var(--line);
   border-radius: 0.85rem;
   background: var(--bg-card-solid);
+}
+
+.recipe-list-actions {
+  display: flex;
+  align-items: center;
+  padding: 0.82rem;
+  border-left: 1px solid var(--line);
+}
+
+.recipe-visibility {
+  border-radius: 999px;
+  padding: 0.24rem 0.55rem;
+  background: var(--bg-soft);
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.recipe-visibility.is-public {
+  background: color-mix(in srgb, var(--primary) 14%, var(--bg-card-solid));
+  color: var(--primary);
 }
 
 .recipe-list-card > img,
@@ -802,6 +957,100 @@
   color: var(--text);
   font-size: 0.8rem;
   font-weight: 700;
+}
+
+.social-purpose-pill,
+.social-purpose-card {
+  --purpose-color: var(--primary);
+  --purpose-soft: color-mix(in srgb, var(--purpose-color) 13%, var(--bg-card-solid));
+  --purpose-line: color-mix(in srgb, var(--purpose-color) 38%, var(--line));
+}
+
+.social-purpose-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border: 1px solid var(--purpose-line);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 0 0, color-mix(in srgb, var(--purpose-color) 22%, transparent), transparent 1.8rem),
+    var(--purpose-soft);
+  color: color-mix(in srgb, var(--purpose-color) 78%, var(--text));
+  padding: 0.24rem 0.58rem;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+}
+
+.social-purpose-card {
+  display: grid;
+  gap: 0.28rem;
+  border: 1px solid var(--purpose-line);
+  border-radius: 0.9rem;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--purpose-color) 15%, transparent), transparent 42%),
+    var(--purpose-soft);
+  color: var(--text);
+  padding: 0.72rem 0.82rem;
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--purpose-color) 12%, transparent);
+}
+
+.social-purpose-card span {
+  color: color-mix(in srgb, var(--purpose-color) 78%, var(--text));
+  font-size: 0.74rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.social-purpose-card strong {
+  color: var(--text);
+  font-size: 0.98rem;
+}
+
+.social-purpose-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.social-purpose-pill.is-muscle,
+.social-purpose-card.is-muscle {
+  --purpose-color: #157f52;
+}
+
+.social-purpose-pill.is-performance,
+.social-purpose-card.is-performance {
+  --purpose-color: #1d6ed0;
+}
+
+.social-purpose-pill.is-balanced,
+.social-purpose-card.is-balanced {
+  --purpose-color: var(--primary);
+}
+
+.social-purpose-pill.is-light,
+.social-purpose-card.is-light {
+  --purpose-color: #719622;
+}
+
+.social-purpose-pill.is-occasional,
+.social-purpose-card.is-occasional {
+  --purpose-color: #c46a18;
+}
+
+.social-purpose-pill.is-improvable,
+.social-purpose-card.is-improvable {
+  --purpose-color: var(--warn);
+}
+
+.social-health-panel .social-purpose-card {
+  grid-column: 1 / -1;
+}
+
+.recipe-detail-purpose {
+  margin-top: 0.72rem;
 }
 
 .nutrition-grid.compact {
@@ -2242,6 +2491,7 @@
 
   .control-grid,
   .crud-form,
+  .objective-mode-card,
   .recipe-form-grid,
   .recipe-detail-hero,
   .external-sync-actions,
@@ -2249,6 +2499,10 @@
   .shopping-plan-metrics,
   .shopping-plan-grid {
     grid-template-columns: 1fr;
+  }
+
+  .objective-mode-options {
+    justify-content: flex-start;
   }
 
   .recipe-form-grid .recipe-field:first-child,
@@ -2274,6 +2528,8 @@
   .recipe-list-actions {
     grid-column: 1 / -1;
     justify-content: stretch;
+    border-top: 1px solid var(--line);
+    border-left: 0;
     padding-top: 0;
   }
 

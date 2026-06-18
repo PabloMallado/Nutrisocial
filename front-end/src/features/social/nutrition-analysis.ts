@@ -4,10 +4,18 @@ export type RecipeHealthAnalysis = {
   score: number
   level: string
   summary: string
+  goal: RecipeNutritionGoal
   tags: string[]
   highlights: string[]
   warnings: string[]
   suggestions: string[]
+}
+
+export type RecipeNutritionGoal = {
+  id: 'muscle' | 'performance' | 'balanced' | 'light' | 'occasional' | 'improvable'
+  label: string
+  title: string
+  summary: string
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -28,8 +36,73 @@ function getMacroPercentages(recipe: SocialRecipe) {
   }
 }
 
+export function getRecipeNutritionGoal(recipe: SocialRecipe): RecipeNutritionGoal {
+  const macroPercentages = getMacroPercentages(recipe)
+  const hasVegetablesOrFruit = recipe.ingredients.some((ingredient) =>
+    /verdura|brocoli|brócoli|pepino|canonigos|canónigos|tomate|fruta|judias|judías|pimiento|zanahoria|espinaca|ensalada|lechuga/i.test(ingredient.name),
+  )
+  const highProtein = recipe.protein >= 30 || macroPercentages.protein >= 24
+  const performanceCarbs = recipe.carbs >= 55 || (recipe.carbs >= 42 && recipe.fat <= 22)
+  const highEnergy = recipe.calories >= 650
+  const highFat = recipe.fat >= 30 || macroPercentages.fat >= 45
+  const lowProtein = recipe.protein < 14 && macroPercentages.protein < 15
+
+  if (highEnergy && (highFat || recipe.carbs >= 70)) {
+    return {
+      id: 'occasional',
+      label: 'Disfrute puntual',
+      title: 'Para disfrutar de forma ocasional',
+      summary: 'Es una receta más energética o pesada: encaja mejor como capricho planificado que como base diaria.',
+    }
+  }
+
+  if (highProtein && recipe.calories >= 350 && recipe.calories <= 800) {
+    return {
+      id: 'muscle',
+      label: 'Ganancia muscular',
+      title: 'Buena para ganar músculo',
+      summary: 'Tiene una base proteica sólida y energía suficiente para apoyar saciedad, recuperación y progreso muscular.',
+    }
+  }
+
+  if (performanceCarbs && !highFat && recipe.calories >= 280) {
+    return {
+      id: 'performance',
+      label: 'Rendimiento',
+      title: 'Ideal para rendimiento',
+      summary: 'Aporta carbohidratos útiles para entrenar, recuperar o afrontar un día activo sin sentirse demasiado pesada.',
+    }
+  }
+
+  if (recipe.calories < 350 && recipe.fat < 16) {
+    return {
+      id: 'light',
+      label: 'Ligera',
+      title: 'Opción ligera',
+      summary: 'Funciona bien cuando buscas algo más suave; puede necesitar más proteína o hidratos si será una comida principal.',
+    }
+  }
+
+  if (lowProtein || (highFat && !hasVegetablesOrFruit)) {
+    return {
+      id: 'improvable',
+      label: 'Mejorable',
+      title: 'Mejorable para diario',
+      summary: 'Puede encajar puntualmente, pero le vendría bien más proteína, fibra o una grasa más moderada para ser más completa.',
+    }
+  }
+
+  return {
+    id: 'balanced',
+    label: 'Equilibrada',
+    title: 'Buena opción equilibrada',
+    summary: 'Tiene un reparto bastante razonable para una comida habitual y se puede ajustar según tu objetivo.',
+  }
+}
+
 export function analyzeRecipeHealth(recipe: SocialRecipe): RecipeHealthAnalysis {
   const macroPercentages = getMacroPercentages(recipe)
+  const goal = getRecipeNutritionGoal(recipe)
   const tags: string[] = []
   const highlights: string[] = []
   const warnings: string[] = []
@@ -116,6 +189,7 @@ export function analyzeRecipeHealth(recipe: SocialRecipe): RecipeHealthAnalysis 
     score: finalScore,
     level,
     summary,
+    goal,
     tags: Array.from(new Set(tags)),
     highlights,
     warnings,

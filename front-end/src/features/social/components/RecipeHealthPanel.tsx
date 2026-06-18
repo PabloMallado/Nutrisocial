@@ -39,6 +39,12 @@ export function RecipeHealthPanel({ recipe, sourceId }: RecipeHealthPanelProps) 
         <p>{healthAnalysis.summary}</p>
       </div>
 
+      <div className={`social-purpose-card is-${healthAnalysis.goal.id}`}>
+        <span>{healthAnalysis.goal.label}</span>
+        <strong>{healthAnalysis.goal.title}</strong>
+        <p>{healthAnalysis.goal.summary}</p>
+      </div>
+
       <div className="social-health-columns">
         {healthAnalysis.highlights.length > 0 ? (
           <div>

@@ -81,12 +81,11 @@ ALLOWED_EXTERNAL_STORE_ALIASES = {
     "auchan": "Alcampo",
     "aldi": "Aldi",
     "carrefour": "Carrefour",
-    "carrefour express": "Carrefour Express",
+    "carrefour express": "Carrefour",
     "consum": "Consum",
-    "coviran": "Covirán",
-    "dia": "El Día",
-    "el dia": "El Día",
-    "supermercados dia": "El Día",
+    "dia": "Dia",
+    "el dia": "Dia",
+    "supermercados dia": "Dia",
     "eroski": "Eroski",
     "eroki": "Eroski",
     "lidl": "Lidl",
@@ -96,11 +95,8 @@ ALLOWED_EXTERNAL_STORE_IDS = {
     "alcampo",
     "aldi",
     "carrefour",
-    "carrefour-express",
     "consum",
-    "coviran",
     "dia",
-    "el-dia",
     "eroski",
     "lidl",
     "mercadona",
@@ -109,7 +105,7 @@ STORE_ALIASES = {
     "zendado mercadona": "Mercadona",
     "hacendado mercadona": "Mercadona",
     "mercadona": "Mercadona",
-    "carrefour express": "Carrefour Express",
+    "carrefour express": "Carrefour",
     "carrefour": "Carrefour",
     "alcampo": "Alcampo",
     "al campo": "Alcampo",
@@ -355,6 +351,7 @@ def ensure_schema() -> None:
         ("products", "source_provider", "VARCHAR(120) NULL", "fat"),
         ("products", "external_code", "VARCHAR(180) NULL", "source_provider"),
         ("recipes", "steps", "TEXT NULL", "description"),
+        ("recipes", "is_published", "TINYINT(1) NOT NULL DEFAULT 0", "difficulty"),
         ("recipes", "calories_total", "DECIMAL(10, 2) NOT NULL DEFAULT 0.00", "difficulty"),
         ("recipes", "protein_total", "DECIMAL(10, 2) NOT NULL DEFAULT 0.00", "calories_total"),
         ("recipes", "carbs_total", "DECIMAL(10, 2) NOT NULL DEFAULT 0.00", "protein_total"),
@@ -363,11 +360,17 @@ def ensure_schema() -> None:
 
     with get_connection() as conn:
         with conn.cursor() as cursor:
+            cursor.execute("SHOW COLUMNS FROM `recipes` LIKE 'is_published'")
+            publication_column_existed = cursor.fetchone() is not None
+
             for table, column, definition, after in migrations:
                 cursor.execute(f"SHOW COLUMNS FROM `{table}` LIKE %s", (column,))
                 if cursor.fetchone():
                     continue
                 cursor.execute(f"ALTER TABLE `{table}` ADD COLUMN `{column}` {definition} AFTER `{after}`")
+
+            if not publication_column_existed:
+                cursor.execute("UPDATE recipes SET is_published = 1")
 
             cursor.execute("ALTER TABLE recipes MODIFY image_url LONGTEXT NULL")
 
@@ -465,13 +468,22 @@ def stores_query() -> str:
     return f"""
       SELECT
         s.id, s.name, s.description, s.address, s.city, s.latitude, s.longitude, s.logo, s.accent, s.image_url,
-        COUNT(DISTINCT COALESCE(psl.product_id, p.id)) AS products_count
+        COALESCE(product_counts.products_count, 0) AS products_count
       FROM stores s
-      LEFT JOIN products p ON p.store_id = s.id
-      LEFT JOIN product_store_listings psl ON psl.store_id = s.id
+      LEFT JOIN (
+        SELECT store_id, COUNT(DISTINCT product_id) AS products_count
+        FROM (
+          SELECT id AS product_id, store_id
+          FROM products
+          WHERE store_id IS NOT NULL
+          UNION ALL
+          SELECT product_id, store_id
+          FROM product_store_listings
+        ) store_products
+        GROUP BY store_id
+      ) product_counts ON product_counts.store_id = s.id
       WHERE s.id <> 'open-food-facts'
         AND {allowed_filter}
-      GROUP BY s.id
       ORDER BY s.name ASC
     """
 
@@ -827,10 +839,11 @@ def fetch_open_food_facts_products(query: str = "", page_size: int = 40, page: i
     cgi_params[f"tag_contains_{tag_index}"] = "contains"
     cgi_params[f"tag_{tag_index}"] = "spain"
 
-    urls = [
-        f"{OPEN_FOOD_FACTS_SEARCH_V2_URL}?{urlencode(v2_params)}",
-        f"{OPEN_FOOD_FACTS_SEARCH_URL}?{urlencode(cgi_params)}",
-    ]
+    # Structured store searches belong on the v2 API. The legacy CGI endpoint
+    # remains only as a fallback for full-text searches.
+    urls = [f"{OPEN_FOOD_FACTS_SEARCH_V2_URL}?{urlencode(v2_params)}"]
+    if query and not store:
+        urls.append(f"{OPEN_FOOD_FACTS_SEARCH_URL}?{urlencode(cgi_params)}")
     last_error: Exception | None = None
     opener = build_opener(ProxyHandler({}))
     for url in urls:
@@ -936,8 +949,13 @@ def save_open_food_facts_product(cursor, product: dict, preferred_store: str | N
     listing_store_ids = [ensure_external_store(cursor, store_name) for store_name in store_names]
 
     cursor.execute(
-        "SELECT id FROM products WHERE source_provider = 'open_food_facts' AND external_code = %s LIMIT 1",
-        (product["code"],),
+        """
+        SELECT id
+        FROM products
+        WHERE source_provider = 'open_food_facts' AND external_code = %s AND store_id = %s
+        LIMIT 1
+        """,
+        (product["code"], primary_store_id),
     )
     existing = cursor.fetchone()
 
@@ -1087,23 +1105,40 @@ def import_open_food_facts_store_products(stores: list[str], per_store: int) -> 
     result_products: list[dict] = []
     store_summaries: list[dict] = []
 
-    with get_connection(autocommit=False) as conn:
+    for store in stores:
+        canonical_name = canonical_store_name(store)
+        if not canonical_name:
+            skipped += 1
+            continue
+
         try:
-            with conn.cursor() as cursor:
-                for store in stores:
-                    canonical_name = canonical_store_name(store)
-                    if not canonical_name:
-                        skipped += 1
-                        continue
+            raw_products = fetch_open_food_facts_products(page_size=per_store, store=store)
+        except HTTPException as error:
+            detail = error.detail if isinstance(error.detail, dict) else {"message": str(error.detail)}
+            store_summaries.append(
+                {
+                    "store": canonical_name,
+                    "fetched": 0,
+                    "imported": 0,
+                    "updated": 0,
+                    "skipped": 0,
+                    "ok": False,
+                    "error": detail.get("message", "Open Food Facts no respondio"),
+                }
+            )
+            continue
 
-                    raw_products = fetch_open_food_facts_products(page_size=per_store, store=store)
-                    normalized_products = [
-                        item
-                        for item in (normalize_open_food_facts_product(product) for product in raw_products)
-                        if item
-                    ]
-                    store_imported = store_updated = store_skipped = 0
+        normalized_products = [
+            item
+            for item in (normalize_open_food_facts_product(product) for product in raw_products)
+            if item
+        ]
+        store_imported = store_updated = store_skipped = 0
 
+        with get_connection(autocommit=False) as conn:
+            try:
+                with conn.cursor() as cursor:
+                    primary_store_id = ensure_external_store(cursor, canonical_name)
                     for product in normalized_products:
                         store_names = canonical_store_names(product["stores"])
                         if canonical_name not in store_names:
@@ -1111,8 +1146,13 @@ def import_open_food_facts_store_products(stores: list[str], per_store: int) -> 
                             continue
 
                         cursor.execute(
-                            "SELECT id FROM products WHERE source_provider = 'open_food_facts' AND external_code = %s LIMIT 1",
-                            (product["code"],),
+                            """
+                            SELECT id
+                            FROM products
+                            WHERE source_provider = 'open_food_facts' AND external_code = %s AND store_id = %s
+                            LIMIT 1
+                            """,
+                            (product["code"], primary_store_id),
                         )
                         existing = cursor.fetchone()
                         saved_product = save_open_food_facts_product(cursor, product, preferred_store=canonical_name)
@@ -1124,30 +1164,32 @@ def import_open_food_facts_store_products(stores: list[str], per_store: int) -> 
                             store_updated += 1
                         else:
                             store_imported += 1
-                        touched_store_ids.update(ensure_external_store(cursor, store_name) for store_name in store_names)
+                        touched_store_ids.add(primary_store_id)
                         if len(result_products) < 40:
                             result_products.append(saved_product)
 
-                    imported += store_imported
-                    updated += store_updated
-                    skipped += store_skipped
-                    store_summaries.append(
-                        {
-                            "store": canonical_name,
-                            "fetched": len(raw_products),
-                            "imported": store_imported,
-                            "updated": store_updated,
-                            "skipped": store_skipped,
-                        }
-                    )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
+        imported += store_imported
+        updated += store_updated
+        skipped += store_skipped
+        store_summaries.append(
+            {
+                "store": canonical_name,
+                "fetched": len(raw_products),
+                "imported": store_imported,
+                "updated": store_updated,
+                "skipped": store_skipped,
+                "ok": True,
+            }
+        )
 
     return {
         "ok": True,
+        "partial": any(not summary.get("ok", False) for summary in store_summaries),
         "imported": imported,
         "updated": updated,
         "skipped": skipped,
@@ -1177,7 +1219,7 @@ def import_open_food_facts_stores(payload: dict | None = Body(default=None)) -> 
     if not stores:
         raise HTTPException(status_code=400, detail={"message": "No hay tiendas compatibles para sincronizar"})
 
-    per_store = min(max(int_or(payload.get("per_store"), 60), 1), 80)
+    per_store = min(max(int_or(payload.get("per_store"), 100), 1), 100)
     return import_open_food_facts_store_products(stores, per_store)
 
 
@@ -1459,7 +1501,7 @@ def get_recipes() -> list[dict]:
         """
         SELECT
           r.id, r.title, r.description, r.steps, r.image_url, r.servings, r.prep_time, r.difficulty,
-          r.calories_total, r.protein_total, r.carbs_total, r.fat_total, r.created_at,
+          r.is_published, r.calories_total, r.protein_total, r.carbs_total, r.fat_total, r.created_at,
           u.id AS user_id, u.name AS user_name, u.handle AS user_handle,
           s.id AS store_id, s.name AS store_name,
           COUNT(ri.product_id) AS ingredients_count
@@ -1481,7 +1523,7 @@ def get_recipe(recipe_id: int) -> dict:
         """
         SELECT
           r.id, r.title, r.description, r.steps, r.image_url, r.servings, r.prep_time, r.difficulty,
-          r.calories_total, r.protein_total, r.carbs_total, r.fat_total, r.created_at,
+          r.is_published, r.calories_total, r.protein_total, r.carbs_total, r.fat_total, r.created_at,
           u.id AS user_id, u.name AS user_name, u.handle AS user_handle,
           s.id AS store_id, s.name AS store_name
         FROM recipes r
@@ -1727,9 +1769,9 @@ def post_recipe(payload: dict | None = Body(default=None)) -> dict:
                 cursor.execute(
                     """
                     INSERT INTO recipes
-                      (user_id, store_id, title, description, steps, image_url, servings, prep_time, difficulty,
+                      (user_id, store_id, title, description, steps, image_url, servings, prep_time, difficulty, is_published,
                        calories_total, protein_total, carbs_total, fat_total)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
                     """,
                     (
                         payload.get("user_id"),
@@ -1817,6 +1859,24 @@ def put_recipe(recipe_id: int, payload: dict | None = Body(default=None)) -> dic
             raise HTTPException(status_code=500, detail={"message": "No se pudo actualizar la receta", "error": safe_error(error)})
 
 
+@app.post("/api/recipes/{recipe_id}/publication")
+def set_recipe_publication(recipe_id: int, payload: dict | None = Body(default=None)) -> dict:
+    payload = payload or {}
+    if recipe_id <= 0:
+        raise HTTPException(status_code=400, detail={"message": "id de receta invalido"})
+    user_id = int_or(payload.get("user_id"), 0)
+    if user_id <= 0:
+        raise HTTPException(status_code=400, detail={"message": "user_id es obligatorio"})
+    published = bool(payload.get("published"))
+    row_count = execute(
+        "UPDATE recipes SET is_published = %s WHERE id = %s AND user_id = %s",
+        (1 if published else 0, recipe_id, user_id),
+    )
+    if not row_count:
+        raise HTTPException(status_code=404, detail={"message": "Receta no encontrada o no pertenece al usuario"})
+    return {"ok": True, "is_published": published}
+
+
 @app.delete("/api/recipes/{recipe_id}")
 def delete_recipe(recipe_id: int) -> dict:
     if recipe_id <= 0:
@@ -1844,7 +1904,7 @@ def bootstrap() -> dict:
     recipes = query_all(
         """
         SELECT id, user_id, store_id, title, description, steps, image_url, servings, prep_time, difficulty,
-               calories_total, protein_total, carbs_total, fat_total, created_at
+               is_published, calories_total, protein_total, carbs_total, fat_total, created_at
         FROM recipes
         ORDER BY created_at DESC
         """

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { RecipeHealthPanel } from './RecipeHealthPanel'
+import { getRecipeNutritionGoal } from '../nutrition-analysis'
 import { formatRelativeDate } from '../time'
 import { apiRequest } from '../../../services/http'
 import type { SocialComment, SocialPost, SocialRecipeIngredient, SocialUser } from '../types'
@@ -80,6 +81,7 @@ export function PostCard({
   const ingredientProductIds = displayedRecipe.ingredients
     .map((ingredient) => ingredient.productId)
     .filter((productId): productId is string => Boolean(productId))
+  const nutritionGoal = getRecipeNutritionGoal(displayedRecipe)
 
   useEffect(() => {
     if (!isExpanded || post.recipe.ingredients.length > 0 || recipeDetail || recipeDetailError) {
@@ -161,6 +163,7 @@ export function PostCard({
           <p className="social-post-kicker">Receta compartida</p>
           <h3>{post.title}</h3>
           <p>{post.caption}</p>
+          <span className={`social-purpose-pill is-${nutritionGoal.id}`}>{nutritionGoal.label}</span>
         </div>
 
         <div className="social-post-meta">

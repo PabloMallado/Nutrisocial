@@ -1075,7 +1075,7 @@
 }
 
 .social-account-setting-card button,
-.social-account-preference-row span {
+.social-account-preference-row button {
   width: fit-content;
   border: 0;
   background: transparent;
@@ -1086,7 +1086,8 @@
   cursor: pointer;
 }
 
-.social-account-setting-card button:hover {
+.social-account-setting-card button:hover,
+.social-account-preference-row button:hover {
   text-decoration: underline;
 }
 
@@ -1158,6 +1159,7 @@
 }
 
 .social-settings-form input:not([type='checkbox']),
+.social-settings-form select,
 .social-settings-form textarea {
   width: 100%;
   border: 1px solid #abc8d8;
@@ -1667,11 +1669,12 @@
 .app-shell[data-theme='dark'] .theme-switch-label,
 .app-shell[data-theme='dark'] .social-post-kicker,
 .app-shell[data-theme='dark'] .social-account-setting-card button,
-.app-shell[data-theme='dark'] .social-account-preference-row span {
+.app-shell[data-theme='dark'] .social-account-preference-row button {
   color: #75e5dc;
 }
 
 .app-shell[data-theme='dark'] .social-settings-form input:not([type='checkbox']),
+.app-shell[data-theme='dark'] .social-settings-form select,
 .app-shell[data-theme='dark'] .social-settings-form textarea,
 .app-shell[data-theme='dark'] .social-settings-modal-close,
 .app-shell[data-theme='dark'] .social-settings-modal-actions button {

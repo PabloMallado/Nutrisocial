@@ -203,10 +203,12 @@ export function useSocialState(currentUserId: string, usersById: Record<string, 
   )
 
   const followUser = useCallback((userId: string) => {
+    if (userId === currentUserId) return
     dispatch({ type: 'follow_user', currentUserId, userId })
   }, [currentUserId])
 
   const sendFriendRequest = useCallback((userId: string) => {
+    if (userId === currentUserId) return
     dispatch({ type: 'send_friend_request', currentUserId, userId })
   }, [currentUserId])
 

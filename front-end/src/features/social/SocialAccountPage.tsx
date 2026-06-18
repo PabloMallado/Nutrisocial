@@ -21,6 +21,7 @@ type SocialAccountPageProps = {
   onSelectAccountSection: (section: AccountSection) => void
   onToggleDarkMode: (enabled: boolean) => void
   onChangeAvatar: (avatarUrl: string) => void
+  onUpdateProfile: (profile: { displayName: string; username: string; bio: string }) => void
 }
 
 const sectionMeta: Record<AccountSection, { title: string; description: string }> = {
@@ -49,7 +50,7 @@ const accountNav: Array<{ id: AccountSection; label: string }> = [
   { id: 'preferences', label: 'Configuracion' },
 ]
 
-type SettingsModal = 'profile' | 'privacy' | 'notifications' | null
+type SettingsModal = 'profile' | 'privacy' | 'notifications' | 'language' | 'security' | null
 
 export function SocialAccountPage({
   currentUser,
@@ -69,6 +70,7 @@ export function SocialAccountPage({
   onSelectAccountSection,
   onToggleDarkMode,
   onChangeAvatar,
+  onUpdateProfile,
 }: SocialAccountPageProps) {
   const activeMeta = sectionMeta[accountSection]
   const avatarInputRef = useRef<HTMLInputElement>(null)
@@ -89,8 +91,25 @@ export function SocialAccountPage({
     followers: true,
     recipes: false,
   })
+  const [languageDraft, setLanguageDraft] = useState({
+    language: 'es',
+    units: 'metric',
+    compactDates: true,
+  })
+  const [securityDraft, setSecurityDraft] = useState({
+    rememberSession: true,
+    loginAlerts: true,
+    privateDevice: true,
+  })
 
   function openSettingsModal(modal: Exclude<SettingsModal, null>) {
+    if (modal === 'profile') {
+      setProfileDraft({
+        displayName: currentUser.displayName,
+        username: currentUser.username,
+        bio: currentUser.bio,
+      })
+    }
     setSettingsMessage(null)
     setSettingsModal(modal)
   }
@@ -172,6 +191,8 @@ export function SocialAccountPage({
           ))}
         </div>
       </header>
+
+      {settingsMessage ? <p className="social-settings-message">{settingsMessage}</p> : null}
 
       {accountSection === 'overview' ? (
         <div className="social-account-overview-grid">
@@ -281,7 +302,6 @@ export function SocialAccountPage({
               <button type="button" onClick={() => openSettingsModal('notifications')}>Configurar avisos</button>
             </article>
           </div>
-          {settingsMessage ? <p className="social-settings-message">{settingsMessage}</p> : null}
         </section>
       ) : null}
 
@@ -316,14 +336,14 @@ export function SocialAccountPage({
                 <strong>Idioma y formato</strong>
                 <p>Fechas, unidades y textos segun tus preferencias.</p>
               </div>
-              <span>Editar</span>
+              <button type="button" onClick={() => openSettingsModal('language')}>Editar</button>
             </article>
             <article className="social-account-preference-row">
               <div>
                 <strong>Cuenta y seguridad</strong>
                 <p>Accesos, sesiones y opciones generales de la cuenta.</p>
               </div>
-              <span>Revisar</span>
+              <button type="button" onClick={() => openSettingsModal('security')}>Revisar</button>
             </article>
           </div>
         </section>
@@ -346,7 +366,11 @@ export function SocialAccountPage({
                     ? 'Editar perfil publico'
                     : settingsModal === 'privacy'
                       ? 'Gestionar privacidad'
-                      : 'Configurar avisos'}
+                      : settingsModal === 'notifications'
+                        ? 'Configurar avisos'
+                        : settingsModal === 'language'
+                          ? 'Idioma y formato'
+                          : 'Cuenta y seguridad'}
                 </h3>
               </div>
               <button type="button" className="social-settings-modal-close" aria-label="Cerrar" onClick={closeSettingsModal}>×</button>
@@ -355,6 +379,7 @@ export function SocialAccountPage({
             {settingsModal === 'profile' ? (
               <form className="social-settings-form" onSubmit={(event) => {
                 event.preventDefault()
+                onUpdateProfile(profileDraft)
                 saveSettings('Cambios de perfil guardados para esta sesion.')
               }}>
                 <label>
@@ -434,6 +459,72 @@ export function SocialAccountPage({
                     <small>Recibir avisos de recetas publicadas en el feed.</small>
                   </span>
                   <input type="checkbox" checked={notificationDraft.recipes} onChange={(event) => setNotificationDraft((current) => ({ ...current, recipes: event.target.checked }))} />
+                </label>
+                <div className="social-settings-modal-actions">
+                  <button type="button" onClick={closeSettingsModal}>Cancelar</button>
+                  <button type="submit">Guardar</button>
+                </div>
+              </form>
+            ) : null}
+
+            {settingsModal === 'language' ? (
+              <form className="social-settings-form" onSubmit={(event) => {
+                event.preventDefault()
+                saveSettings('Preferencias de idioma y formato guardadas para esta sesion.')
+              }}>
+                <label>
+                  Idioma
+                  <select value={languageDraft.language} onChange={(event) => setLanguageDraft((current) => ({ ...current, language: event.target.value }))}>
+                    <option value="es">Español</option>
+                    <option value="en">Inglés</option>
+                  </select>
+                </label>
+                <label>
+                  Unidades
+                  <select value={languageDraft.units} onChange={(event) => setLanguageDraft((current) => ({ ...current, units: event.target.value }))}>
+                    <option value="metric">Gramos, mililitros y kcal</option>
+                    <option value="servings">Raciones y unidades</option>
+                  </select>
+                </label>
+                <label className="social-settings-toggle">
+                  <span>
+                    <strong>Fechas compactas</strong>
+                    <small>Mostrar textos como "hace 2 dias" en vez de fechas completas.</small>
+                  </span>
+                  <input type="checkbox" checked={languageDraft.compactDates} onChange={(event) => setLanguageDraft((current) => ({ ...current, compactDates: event.target.checked }))} />
+                </label>
+                <div className="social-settings-modal-actions">
+                  <button type="button" onClick={closeSettingsModal}>Cancelar</button>
+                  <button type="submit">Guardar</button>
+                </div>
+              </form>
+            ) : null}
+
+            {settingsModal === 'security' ? (
+              <form className="social-settings-form" onSubmit={(event) => {
+                event.preventDefault()
+                saveSettings('Opciones de cuenta y seguridad guardadas para esta sesion.')
+              }}>
+                <label className="social-settings-toggle">
+                  <span>
+                    <strong>Recordar sesion</strong>
+                    <small>Mantener tu usuario activo en este navegador.</small>
+                  </span>
+                  <input type="checkbox" checked={securityDraft.rememberSession} onChange={(event) => setSecurityDraft((current) => ({ ...current, rememberSession: event.target.checked }))} />
+                </label>
+                <label className="social-settings-toggle">
+                  <span>
+                    <strong>Avisos de acceso</strong>
+                    <small>Mostrar recordatorios cuando cambien datos importantes.</small>
+                  </span>
+                  <input type="checkbox" checked={securityDraft.loginAlerts} onChange={(event) => setSecurityDraft((current) => ({ ...current, loginAlerts: event.target.checked }))} />
+                </label>
+                <label className="social-settings-toggle">
+                  <span>
+                    <strong>Dispositivo privado</strong>
+                    <small>Optimiza la experiencia para un equipo que solo usas tu.</small>
+                  </span>
+                  <input type="checkbox" checked={securityDraft.privateDevice} onChange={(event) => setSecurityDraft((current) => ({ ...current, privateDevice: event.target.checked }))} />
                 </label>
                 <div className="social-settings-modal-actions">
                   <button type="button" onClick={closeSettingsModal}>Cancelar</button>

@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS recipes (
   servings INT NOT NULL DEFAULT 1,
   prep_time INT NOT NULL DEFAULT 0,
   difficulty ENUM('Facil', 'Media', 'Alta') NOT NULL DEFAULT 'Media',
+  is_published TINYINT(1) NOT NULL DEFAULT 0,
   calories_total DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
   protein_total DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
   carbs_total DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
