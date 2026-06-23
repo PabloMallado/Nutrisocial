@@ -1,13 +1,19 @@
 ﻿import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { checkDbConnection, pool } from './db.js'
 import { findNearbyStoresForProduct } from './services/storeProductSearchService.js'
 
 dotenv.config()
 
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const clientDistPath = path.resolve(__dirname, '../../dist')
+
 const app = express()
-const port = Number(process.env.API_PORT ?? 4000)
+const port = Number(process.env.PORT || process.env.API_PORT || 4000)
 const allowedDifficulties = new Set(['Facil', 'Media', 'Alta'])
 
 app.use(cors())
@@ -969,6 +975,16 @@ app.get('/api/bootstrap', async (_req, res) => {
       error: safeError(error),
     })
   }
+})
+
+app.use(express.static(clientDistPath))
+
+app.use((req, res, next) => {
+  if (req.method !== 'GET' || req.path.startsWith('/api')) {
+    return next()
+  }
+
+  res.sendFile(path.join(clientDistPath, 'index.html'))
 })
 
 const start = async () => {
