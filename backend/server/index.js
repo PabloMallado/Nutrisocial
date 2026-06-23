@@ -1,6 +1,7 @@
 ﻿import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import crypto from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkDbConnection, pool } from './db.js'
@@ -15,6 +16,9 @@ const clientDistPath = path.resolve(__dirname, '../../dist')
 const app = express()
 const port = Number(process.env.PORT || process.env.API_PORT || 4000)
 const allowedDifficulties = new Set(['Facil', 'Media', 'Alta'])
+const passwordHashIterations = 100000
+const passwordHashKeyLength = 64
+const passwordHashDigest = 'sha512'
 
 app.use(cors())
 app.use(express.json())
@@ -44,6 +48,33 @@ function parseNullableCoordinate(value) {
   if (value === null || value === undefined || value === '') return null
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  const hash = crypto
+    .pbkdf2Sync(String(password), salt, passwordHashIterations, passwordHashKeyLength, passwordHashDigest)
+    .toString('hex')
+
+  return `${salt}:${hash}`
+}
+
+function verifyPassword(password, storedHash) {
+  if (!storedHash || typeof storedHash !== 'string' || !storedHash.includes(':')) return false
+
+  const [salt, expectedHash] = storedHash.split(':')
+  const actualHash = hashPassword(password, salt).split(':')[1]
+
+  if (actualHash.length !== expectedHash.length) return false
+  return crypto.timingSafeEqual(Buffer.from(actualHash, 'hex'), Buffer.from(expectedHash, 'hex'))
+}
+
+function authUserResponse(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    handle: user.handle,
+    avatar_url: user.avatar_url,
+  }
 }
 
 async function resolveIngredientsWithTotals(conn, ingredients) {
@@ -93,6 +124,7 @@ async function ensureSchema() {
     { table: 'stores', column: 'latitude', definition: 'DECIMAL(10, 7) NULL', after: 'address' },
     { table: 'stores', column: 'longitude', definition: 'DECIMAL(10, 7) NULL', after: 'latitude' },
     { table: 'stores', column: 'image_url', definition: 'VARCHAR(500) NULL', after: 'accent' },
+    { table: 'users', column: 'password_hash', definition: 'VARCHAR(255) NULL', after: 'email' },
     { table: 'products', column: 'reference_amount', definition: 'DECIMAL(10, 2) NOT NULL DEFAULT 100.00', after: 'store_id' },
     { table: 'products', column: 'reference_unit', definition: "VARCHAR(30) NOT NULL DEFAULT 'g'", after: 'reference_amount' },
     { table: 'recipes', column: 'steps', definition: 'TEXT NULL', after: 'description' },
@@ -172,6 +204,81 @@ app.get('/api/health', async (_req, res) => {
     res.status(500).json({
       ok: false,
       db: 'disconnected',
+      error: safeError(error),
+    })
+  }
+})
+
+app.post('/api/auth/register', async (req, res) => {
+  const name = String(req.body?.name ?? '').trim()
+  const handle = normalizeSlug(req.body?.username ?? req.body?.handle ?? '')
+  const password = String(req.body?.password ?? '')
+  const confirmPassword = String(req.body?.confirm_password ?? req.body?.confirmPassword ?? '')
+
+  if (!name || !handle || !password) {
+    return res.status(400).json({ message: 'Nombre, usuario y contraseña son obligatorios' })
+  }
+
+  if (handle.length < 3) {
+    return res.status(400).json({ message: 'El usuario debe tener al menos 3 caracteres' })
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ message: 'La contraseña debe tener al menos 6 caracteres' })
+  }
+
+  if (password !== confirmPassword) {
+    return res.status(400).json({ message: 'Las contraseñas no coinciden' })
+  }
+
+  try {
+    const email = `${handle}@nutrisocial.local`
+    const passwordHash = hashPassword(password)
+
+    const [result] = await pool.execute(
+      'INSERT INTO users (name, handle, email, password_hash, avatar_url, verified) VALUES (?, ?, ?, ?, ?, 0)',
+      [name, handle, email, passwordHash, null],
+    )
+
+    res.status(201).json({
+      ok: true,
+      user: authUserResponse({ id: result.insertId, name, handle, avatar_url: null }),
+    })
+  } catch (error) {
+    if (error?.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: 'Ese usuario ya existe' })
+    }
+
+    res.status(500).json({
+      message: 'No se pudo crear la cuenta',
+      error: safeError(error),
+    })
+  }
+})
+
+app.post('/api/auth/login', async (req, res) => {
+  const handle = normalizeSlug(req.body?.username ?? req.body?.handle ?? '')
+  const password = String(req.body?.password ?? '')
+
+  if (!handle || !password) {
+    return res.status(400).json({ message: 'Usuario y contraseña son obligatorios' })
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      'SELECT id, name, handle, avatar_url, password_hash FROM users WHERE handle = ? LIMIT 1',
+      [handle],
+    )
+    const user = rows[0]
+
+    if (!user || !verifyPassword(password, user.password_hash)) {
+      return res.status(401).json({ message: 'Usuario o contraseña incorrectos' })
+    }
+
+    res.json({ ok: true, user: authUserResponse(user) })
+  } catch (error) {
+    res.status(500).json({
+      message: 'No se pudo iniciar sesión',
       error: safeError(error),
     })
   }
